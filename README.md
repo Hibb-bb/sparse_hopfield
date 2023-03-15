@@ -1,47 +1,6 @@
-# Hopfield Networks is All You Need
-
-_Hubert Ramsauer<sup>1</sup>, Bernhard Schäfl<sup>1</sup>, Johannes Lehner<sup>1</sup>, Philipp Seidl<sup>1</sup>,
-Michael Widrich<sup>1</sup>, Lukas Gruber<sup>1</sup>, Markus Holzleitner<sup>1</sup>, Milena Pavlović<sup>3, 4</sup>,
-Geir Kjetil Sandve<sup>4</sup>, Victor Greiff<sup>3</sup>, David Kreil<sup>2</sup>, Michael Kopp<sup>2</sup>, Günter
-Klambauer<sup>1</sup>, Johannes Brandstetter<sup>1</sup>, Sepp Hochreiter<sup>1, 2</sup>_
-
-<sup>1</sup> ELLIS Unit Linz and LIT AI Lab, Institute for Machine Learning, Johannes Kepler University Linz, Austria  
-<sup>2</sup> Institute of Advanced Research in Artificial Intelligence (IARAI)  
-<sup>3</sup> Department of Immunology, University of Oslo, Norway  
-<sup>4</sup> Department of Informatics, University of Oslo, Norway
+# Sparse Hopfield Networks 
 
 ---
-
-##### Detailed blog post on this paper as well as the necessary background on Hopfield networks at [this link](https://ml-jku.github.io/hopfield-layers/).
-
----
-
-The transformer and BERT models pushed the performance on NLP tasks to new levels via their attention mechanism. We show
-that this attention mechanism is the update rule of a modern Hopfield network with continuous states. This new Hopfield
-network can store exponentially (with the dimension) many patterns,converges with one update, and has exponentially
-small retrieval errors. The number of stored patterns must be traded off against convergence speed and retrieval error.
-The new Hopfield network has three types of energy minima (fixed points of the update):
-
-1. global fixed point averaging over all patterns,
-2. metastable states averaging over a subset of patterns, and
-3. fixed points which store a single pattern.
-
-Transformers learn an attention mechanism by constructing an embedding of patterns and queries into an associative
-space. Transformer and BERT models operate in their first layers preferably in the global averaging regime, while they
-operate in higher layers in metastable states. The gradient in transformers is maximal in the regime of metastable
-states, is uniformly distributed when averaging globally, and vanishes when a fixed point is near a stored pattern.
-Based on the Hopfield network interpretation, we analyzed learning of transformer and BERT architectures. Learning
-starts with attention heads that average and then most of them switch to metastable states. However, the majority of
-heads in the first layers still averages and can be replaced by averaging operations like the Gaussian weighting that we
-propose. In contrast, heads in the last layers steadily learn and seem to use metastable states to collect information
-created in lower layers. These heads seem a promising target for improving transformers. Neural networks that integrate
-Hopfield networks that are equivalent to attention heads outperform other methods on immune repertoire classification,
-where the Hopfield net stores several hundreds of thousands of patterns.
-
-With _this_ repository, we provide a PyTorch implementation of a new layer called “Hopfield” which allows to equip deep
-learning architectures with Hopfield networks as new memory concepts.
-
-The full paper is available at [https://arxiv.org/abs/2008.02217](https://arxiv.org/abs/2008.02217).
 
 ## Requirements
 
@@ -58,20 +17,10 @@ how to install PyTorch are available on the [official project page](https://pyto
 
 The recommended way to install the software is to use `pip/pip3`:
 
-```bash
-$ pip3 install git+https://github.com/ml-jku/hopfield-layers
-```
-
-To successfully run the [Jupyter notebooks](https://jupyter.org) contained in [examples](examples/), additional
-third-party modules are needed:
 
 ```bash
 $ pip3 install -r examples/requirements.txt
 ```
-
-The installation of the [Jupyter software](https://jupyter.org/install.html) itself is not covered. More details on how
-to install Jupyter are available at the [official installation page](https://jupyter.org/install.html).
-
 
 ## DeepRC Dataset Usage
 
