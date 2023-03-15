@@ -24,6 +24,10 @@ $ pip3 install -r examples/requirements.txt
 
 ## DeepRC Dataset Usage
 
+**Please do not use the cmv_implanted_dataset yet, the filelink now is missing.**
+**THe simulated dataset is still under testing**
+**To download the lstm_generated and CMV dataset, please run `python3 download_dataset.py`**
+
 ```python
 from deeprc.dataset_readers import make_dataloaders
 from deeprc.predefined_datasets import *
