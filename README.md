@@ -72,6 +72,32 @@ $ pip3 install -r examples/requirements.txt
 The installation of the [Jupyter software](https://jupyter.org/install.html) itself is not covered. More details on how
 to install Jupyter are available at the [official installation page](https://jupyter.org/install.html).
 
+
+## DeepRC Dataset Usage
+
+```python
+from deeprc.dataset_readers import make_dataloaders
+from deeprc.predefined_datasets import *
+
+batch_size = 4
+
+# For the CMV dataset
+task_definition, train_loader, train_loader_fixed, val_loader, test_loader = cmv_dataset(dataset_path='./datasets/cmv/', batch_size=batch_size)
+
+# For the CMV + Implant Signal  dataset
+
+task_definition, train_loader, train_loader_fixed, val_loader, test_loader = cmv_implanted_dataset(dataset_path='./datasets/cmv_implanted/', batch_size=batch_size)
+
+# For the Simulated dataset
+
+task_definition, train_loader, train_loader_fixed, val_loader, test_loader = simulated_dataset(dataset_path='./datasets/simulated/', batch_size=batch_size)
+
+# For the lstm generated dataset
+
+task_definition, train_loader, train_loader_fixed, val_loader, test_loader = lstm_generated_dataset(dataset_path='./datasets/lstm/', batch_size=batch_size)
+
+```
+
 ## Usage
 
 To get up and running with Hopfield-based networks, only <i>one</i> argument needs to be set, the size (depth) of the

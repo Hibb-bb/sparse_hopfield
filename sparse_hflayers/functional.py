@@ -5,6 +5,8 @@ from torch import Tensor
 from typing import Optional, Tuple, Union
 from sparse_max import Sparsemax
 
+sparsemax = Sparsemax()
+
 def hopfield_core_forward(query,                           # type: Tensor
                           key,                             # type: Tensor
                           value,                           # type: Tensor
@@ -418,11 +420,11 @@ def hopfield_core_forward(query,                           # type: Tensor
 
         # Compute new xi for Hopfield retrieve iterations.
         if xi is None:
-            xi = nn.functional.softmax(attn_output_weights, dim=-1)
+            xi = sparsemax(attn_output_weights)
                 
         else:
-            xi = torch.masked_scatter(input=xi, mask=update_active_heads, source=nn.functional.softmax(
-                attn_output_weights.masked_select(mask=update_active_heads).view(size=(-1, *xi.shape[1:])), dim=-1))
+            xi = torch.masked_scatter(input=xi, mask=update_active_heads, source=sparsemax(
+                attn_output_weights.masked_select(mask=update_active_heads).view(size=(-1, *xi.shape[1:]))))
 
         # Compute threshold-based stopping criterion for Hopfield retrieve iterations.
         with torch.no_grad():
