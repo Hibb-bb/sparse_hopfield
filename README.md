@@ -2,6 +2,25 @@
 
 ---
 
+
+## ToDos
+
+- [ ] See how to put dataset into a torch DataLoader due to uneven bag sizes
+- [ ] Check split size
+- [ ] Elephant dataset
+- [ ] Fox dataset
+- [ ] tiger dataset
+- [ ] ucsb breast cancer dataset
+- [ ] Test simulated dataset
+- [ ] CMV with implant
+- [ ] MNIST bags
+
+## Download Dataset
+
+`cd datasets/mil_datasets/` <br>
+`wget http://www.cs.columbia.edu/~andrews/mil/data/MIL-Data-2002-Musk-Corel-Trec9-MATLAB.tgz` <br>
+`tar zxvf ./MIL-Data-2002-Musk-Corel-Trec9-MATLAB.tg` <br>
+
 ## Requirements
 
 The software was developed and tested on the following 64-bit operating systems:
@@ -130,26 +149,3 @@ like [pandas](https://pandas.pydata.org) and [seaborn](https://seaborn.pydata.or
   of <b>28x28</b> grayscale images/instances, whereas each instance is a sequence of pixel values in the range
   of <b>[0; 255]</b>. The amount of instances per pag is drawn from a Gaussian with specified mean and variance. The
   positive class is defined by the presence of the target number/digit, whereas the negative one by its absence.
-
-## Disclaimer
-
-Some implementations of this repository are based on existing ones of the
-official [PyTorch repository v1.6.0](https://github.com/pytorch/pytorch/tree/v1.6.0) and accordingly extended and
-modified. In the following, the involved parts are listed:
-
-- The implementation of [HopfieldCore](hflayers/activation.py#L16) is based on the implementation
-  of [MultiheadAttention](https://github.com/pytorch/pytorch/blob/b31f58de6fa8bbda5353b3c77d9be4914399724d/torch/nn/modules/activation.py#L771)
-  .
-- The implementation of [hopfield_core_forward](hflayers/functional.py#L8) is based on the implementation
-  of [multi_head_attention_forward](https://github.com/pytorch/pytorch/blob/b31f58de6fa8bbda5353b3c77d9be4914399724d/torch/nn/functional.py#L3854)
-  .
-- The implementation of [HopfieldEncoderLayer](hflayers/transformer.py#L12) is based on the implementation
-  of [TransformerEncoderLayer](https://github.com/pytorch/pytorch/blob/b31f58de6fa8bbda5353b3c77d9be4914399724d/torch/nn/modules/transformer.py#L241)
-  .
-- The implementation of [HopfieldDecoderLayer](hflayers/transformer.py#L101) is based on the implementation
-  of [TransformerDecoderLayer](https://github.com/pytorch/pytorch/blob/b31f58de6fa8bbda5353b3c77d9be4914399724d/torch/nn/modules/transformer.py#L303)
-  .
-
-## License
-
-This repository is BSD-style licensed (see [LICENSE](LICENSE)), except where noted otherwise.

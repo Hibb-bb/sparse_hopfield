@@ -1,13 +1,18 @@
-from deeprc.dataset_readers import make_dataloaders
-from deeprc.predefined_datasets import *
+from datasets import loader
+import argparse
+import torch
 
+parser = argparse.ArgumentParser(description='Examples of MIL benchmarks:')
+parser.add_argument('--dataset', default='mnist', type=str, choices=['mnist'])
+args = parser.parse_args()
 
-batch_size = 4
+train_loader = torch.utils.data.DataLoader(loader.MnistBags(target_number=9,
+                                                mean_bag_length=10,
+                                                var_bag_length=2,
+                                                num_bag=100,
+                                                seed=98,
+                                                train=True),
+                                                batch_size=4,
+                                                shuffle=False)
 
-task_definition, train_loader, train_loader_fixed, val_loader, test_loader = cmv_dataset(dataset_path='./datasets/cmv/')
-
-# task_definition, train_loader, train_loader_fixed, val_loader, test_loader = cmv_implanted_dataset(dataset_path='./datasets/cmv_implanted/', batch_size=batch_size)
-
-task_definition, train_loader, train_loader_fixed, val_loader, test_loader = lstm_generated_dataset(dataset_path='./datasets/lstm/', batch_size=batch_size)
-
-# task_definition, trainingset, trainingset_eval, validationset_eval, testset_eval = simulated_dataset()
+print(train_loader[0].size())
