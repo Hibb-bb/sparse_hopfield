@@ -160,6 +160,11 @@ cython_debug/
 #.idea/
 
 
-./datasets/*
-./lib/*
-./bin/*
+*/lib/*
+*/bin/*
+
+*.mat*
+*mil_datasets*
+*datasets/lstm*
+*datasets/cmv*
+*datasets/cmv_implanted*
