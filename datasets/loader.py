@@ -12,6 +12,33 @@ from torchvision import datasets, transforms
 
 from .loader_utils import *
 
+
+class DummyDataset(torch.utils.data.Dataset):
+    def __init__(self, x, y) -> None:
+        super().__init__()
+
+        self.x = x
+        self.y = y
+
+    def __len__(self):
+        return len(self.x)
+
+    def __getitem__(self, idx):
+        batch_x = self.x[idx] # (bag_size, feat_dim)
+        batch_y = self.y[idx]
+
+        batch_x = torch.tensor(batch_x)
+        batch_y = torch.tensor(batch_y)
+
+        return batch_x, batch_y
+
+    def collate(self, batch):
+
+        x = [x for x,y in batch]
+        y = [y for x,y in batch]
+
+        return x, y
+
 def load_ucsb():
     
     '''
@@ -23,13 +50,14 @@ def load_ucsb():
         
         bags_id = df[1].unique()
         bags = [df[df[1]==bag_id][df.columns.values[2:]].values.tolist() for bag_id in bags_id]
-        print(len(bags), len(bags[0]), len(bags[0][0]))
         y = df.groupby([1])[0].first().values
 
         # split train and test data
         X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(bags, y, test_size=0.2, random_state=0)
         
-        return (X_train, y_train), (X_test, y_test)
+        trainset, testset = DummyDataset(X_train, y_train), DummyDataset(X_test, y_test)
+
+        return trainset, testset
 
     current_file = os.path.abspath(os.path.dirname(__file__))
     return load_data(current_file + '/csv/ucsb_breast_cancer.csv')
@@ -90,13 +118,17 @@ class Dataset():
         self.testing_labels = y_test
 
     def return_training_set(self):
-        return self.training_data, self.training_labels
+
+        trainset = DummyDataset(self.training_data, self.training_labels)
+        return trainset
 
     def return_testing_set(self):
-        return self.testing_data, self.testing_labels
+        testset = DummyDataset(self.testing_data, self.testing_labels)
+        return testset
 
     def return_dataset(self):
-        return self.features, self.bag_labels
+        fullset = DummyDataset(self.features, self.bag_labels)
+        return fullset
 
 class MnistBags(torch.utils.data.Dataset):
     def __init__(self, target_number=9, mean_bag_length=10, var_bag_length=1, num_bag=1000, seed=7, train=True):

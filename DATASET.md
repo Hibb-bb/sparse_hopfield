@@ -57,18 +57,16 @@ from datasets import loader
 import argparse
 
 parser = argparse.ArgumentParser(description='Examples of MIL benchmarks:')
-parser.add_argument('dataset', default='fox', type=str, choices=['fox', 'elephant', 'tiger'])
-parser.add_argument('rs', help='random state', default=1111, type=int)
-parser.add_argument('multiply', help='multiply features to get more columns', default=False, type=bool)
+parser.add_argument('--dataset', default='fox', type=str, choices=['fox', 'elephant', 'tiger'])
+parser.add_argument('--rs', help='random state', default=1111, type=int)
+parser.add_argument('--multiply', help='multiply features to get more columns', default=False, type=bool)
 
 
 args = parser.parse_args()
 
 dataset = loader.get_dataset(args, args.dataset)
-train_x, train_y = dataset.return_training_set()
-test_x, test_y = dataset.return_testing_set()
-
-## train_x: list of bags: (bag_size, feature_dim)
+trainset = dataset.return_training_set()
+trainloader = DataLoader(trainset, batch_size=4, collate_fn=trainset.collate)
 
 # This is a numpy array dataset
 
@@ -80,10 +78,12 @@ from datasets import loader
 import argparse
 
 parser = argparse.ArgumentParser(description='Examples of MIL benchmarks:')
-parser.add_argument('dataset', default='ucsb', type=str, choices=['ucsb'])
+parser.add_argument('--dataset', default='ucsb', type=str, choices=['ucsb'])
 args = parser.parse_args()
 
-(train_x, train_y), (test_x, test_y) = loader.load_ucsb()
+trainset, testset = loader.load_ucsb()
+
+train_loader = DataLoader(trainset, batch_size=2, collate_fn=trainset.collate)
 
 # train_x : (bag_num, bag_size, feature_dim)
 
@@ -102,7 +102,7 @@ import torch
 
 
 parser = argparse.ArgumentParser(description='Examples of MIL benchmarks:')
-parser.add_argument('dataset', default='mnist', type=str, choices=['mnist'])
+parser.add_argument('--dataset', default='mnist', type=str, choices=['mnist'])
 args = parser.parse_args()
 
 train_loader = torch.utils.data.DataLoader(loader.MnistBags(target_number=9,

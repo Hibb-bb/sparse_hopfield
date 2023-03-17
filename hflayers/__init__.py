@@ -359,7 +359,6 @@ class Hopfield(Module):
     def normalize_hopfield_space_affine(self) -> bool:
         return self.hopfield.normalize_hopfield_space_affine
 
-
 class HopfieldPooling(Module):
     """
     Wrapper class encapsulating a trainable but fixed state pattern and "Hopfield" in
@@ -626,7 +625,6 @@ class HopfieldPooling(Module):
     @property
     def normalize_pattern_projection_affine(self) -> bool:
         return self.hopfield.normalize_pattern_projection_affine
-
 
 class HopfieldLayer(Module):
     """
