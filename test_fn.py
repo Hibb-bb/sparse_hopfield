@@ -1,18 +1,27 @@
 from datasets import loader
 import argparse
-import torch
+
+from torch.utils.data import DataLoader
 
 parser = argparse.ArgumentParser(description='Examples of MIL benchmarks:')
-parser.add_argument('--dataset', default='mnist', type=str, choices=['mnist'])
+parser.add_argument('--dataset', default='ucsb', type=str, choices=['ucsb'])
+parser.add_argument('--rs', help='random state', default=1111, type=int)
+parser.add_argument('--multiply', help='multiply features to get more columns', default=False, type=bool)
+
 args = parser.parse_args()
 
-train_loader = torch.utils.data.DataLoader(loader.MnistBags(target_number=9,
-                                                mean_bag_length=10,
-                                                var_bag_length=2,
-                                                num_bag=100,
-                                                seed=98,
-                                                train=True),
-                                                batch_size=4,
-                                                shuffle=False)
+args = parser.parse_args()
 
-print(train_loader[0].size())
+dataset = loader.get_dataset(args, 'fox')
+trainset = dataset.return_training_set()
+
+tdl = DataLoader(trainset, batch_size=4, collate_fn=trainset.collate)
+
+
+print(trainset[0])
+raise Exception
+
+trainset, testset = loader.load_ucsb()
+
+tld = DataLoader(trainset, batch_size=2, collate_fn=trainset.collate)
+

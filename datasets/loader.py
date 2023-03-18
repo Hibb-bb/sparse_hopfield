@@ -37,7 +37,7 @@ class DummyDataset(torch.utils.data.Dataset):
         x = [x for x,y in batch]
         y = [y for x,y in batch]
 
-        return x, y
+        return x[0].unsqueeze(0), y[0].unsqueeze(0)
 
 def load_ucsb():
     
