@@ -173,7 +173,7 @@ class Hopfield(Module):
     def _associate(self, data: Union[Tensor, Tuple[Tensor, Tensor, Tensor]],
                    return_raw_associations: bool = False, return_projected_patterns: bool = False,
                    stored_pattern_padding_mask: Optional[Tensor] = None,
-                   association_mask: Optional[Tensor] = None) -> Tuple[Optional[Tensor], ...]:
+                   association_mask: Optional[Tensor] = None, attn_mask = None) -> Tuple[Optional[Tensor], ...]:
         """
         Apply Hopfield association module on specified data.
 
@@ -182,6 +182,7 @@ class Hopfield(Module):
         :param return_projected_patterns: return pattern projection values, unmodified
         :param stored_pattern_padding_mask: mask to be applied on stored patterns
         :param association_mask: mask to be applied on inner association matrix
+        :param attn_mask: mask to be applied on attention weights
         :return: Hopfield-processed input data
         """
         assert (type(data) == Tensor) or ((type(data) == tuple) and (len(data) == 3)), \
@@ -216,11 +217,11 @@ class Hopfield(Module):
             query=state_pattern, key=stored_pattern, value=pattern_projection,
             key_padding_mask=stored_pattern_padding_mask, need_weights=False, attn_mask=association_mask,
             scaling=self.__scaling, update_steps_max=self.__update_steps_max, update_steps_eps=self.__update_steps_eps,
-            return_raw_associations=return_raw_associations, return_pattern_projections=return_projected_patterns)
+            return_raw_associations=return_raw_associations, return_pattern_projections=return_projected_patterns, attn_mask=attn_mask)
 
     def forward(self, input: Union[Tensor, Tuple[Tensor, Tensor, Tensor]],
                 stored_pattern_padding_mask: Optional[Tensor] = None,
-                association_mask: Optional[Tensor] = None) -> Tensor:
+                association_mask: Optional[Tensor] = None, attn_mask = None) -> Tensor:
         """
         Apply Hopfield association on specified data.
 
@@ -232,14 +233,14 @@ class Hopfield(Module):
         association_output = self._maybe_transpose(self._associate(
             data=input, return_raw_associations=False,
             stored_pattern_padding_mask=stored_pattern_padding_mask,
-            association_mask=association_mask)[0])
+            association_mask=association_mask, attn_mask=attn_mask)[0])
         if self.association_activation is not None:
             association_output = self.association_activation(association_output)
         return association_output
 
     def get_association_matrix(self, input: Union[Tensor, Tuple[Tensor, Tensor, Tensor]],
                                stored_pattern_padding_mask: Optional[Tensor] = None,
-                               association_mask: Optional[Tensor] = None) -> Tensor:
+                               association_mask: Optional[Tensor] = None, attn_mask = None) -> Tensor:
         """
         Fetch Hopfield association matrix gathered by passing through the specified data.
 
@@ -252,11 +253,11 @@ class Hopfield(Module):
             return self._associate(
                 data=input, return_raw_associations=True,
                 stored_pattern_padding_mask=stored_pattern_padding_mask,
-                association_mask=association_mask)[2]
+                association_mask=association_mask, attn_mask = attn_mask)[2]
 
     def get_projected_pattern_matrix(self, input: Union[Tensor, Tuple[Tensor, Tensor, Tensor]],
                                      stored_pattern_padding_mask: Optional[Tensor] = None,
-                                     association_mask: Optional[Tensor] = None) -> Tensor:
+                                     association_mask: Optional[Tensor] = None, attn_mask = None) -> Tensor:
         """
         Fetch Hopfield projected pattern matrix gathered by passing through the specified data.
 
@@ -269,7 +270,7 @@ class Hopfield(Module):
             return self._associate(
                 data=input, return_projected_patterns=True,
                 stored_pattern_padding_mask=stored_pattern_padding_mask,
-                association_mask=association_mask)[3]
+                association_mask=association_mask, attn_mask = attn_mask)[3]
 
     @property
     def batch_first(self) -> bool:
@@ -494,7 +495,7 @@ class HopfieldPooling(Module):
         ), self.pooling_weights.shape[2])), pattern_projection
 
     def forward(self, input: Union[Tensor, Tuple[Tensor, Tensor]], stored_pattern_padding_mask: Optional[Tensor] = None,
-                association_mask: Optional[Tensor] = None) -> Tensor:
+                association_mask: Optional[Tensor] = None, attn_mask = None) -> Tensor:
         """
         Compute Hopfield-based pooling on specified data.
 
@@ -506,11 +507,11 @@ class HopfieldPooling(Module):
         return self.hopfield(
             input=self._prepare_input(input=input),
             stored_pattern_padding_mask=stored_pattern_padding_mask,
-            association_mask=association_mask).flatten(start_dim=1)
+            association_mask=association_mask, attn_mask=attn_mask).flatten(start_dim=1)
 
     def get_association_matrix(self, input: Union[Tensor, Tuple[Tensor, Tensor]],
                                stored_pattern_padding_mask: Optional[Tensor] = None,
-                               association_mask: Optional[Tensor] = None) -> Tensor:
+                               association_mask: Optional[Tensor] = None, attn_mask= None) -> Tensor:
         """
         Fetch Hopfield association matrix used for pooling gathered by passing through the specified data.
 
@@ -523,7 +524,7 @@ class HopfieldPooling(Module):
             return self.hopfield.get_association_matrix(
                 input=self._prepare_input(input=input),
                 stored_pattern_padding_mask=stored_pattern_padding_mask,
-                association_mask=association_mask)
+                association_mask=association_mask, attn_mask=attn_mask)
 
     def get_projected_pattern_matrix(self, input: Union[Tensor, Tuple[Tensor, Tensor]],
                                      stored_pattern_padding_mask: Optional[Tensor] = None,
@@ -776,7 +777,7 @@ class HopfieldLayer(Module):
         return stored_pattern, input, pattern_projection
 
     def forward(self, input: Tensor, stored_pattern_padding_mask: Optional[Tensor] = None,
-                association_mask: Optional[Tensor] = None) -> Tensor:
+                association_mask: Optional[Tensor] = None, attn_mask = None) -> Tensor:
         """
         Compute Hopfield-based lookup on specified data.
 
@@ -788,7 +789,7 @@ class HopfieldLayer(Module):
         return self.hopfield(
             input=self._prepare_input(input=input),
             stored_pattern_padding_mask=stored_pattern_padding_mask,
-            association_mask=association_mask)
+            association_mask=association_mask, attn_mask = attn_mask)
 
     def get_association_matrix(self, input: Tensor, stored_pattern_padding_mask: Optional[Tensor] = None,
                                association_mask: Optional[Tensor] = None) -> Tensor:

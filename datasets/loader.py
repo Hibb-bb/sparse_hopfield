@@ -37,7 +37,25 @@ class DummyDataset(torch.utils.data.Dataset):
         x = [x for x,y in batch]
         y = [y for x,y in batch]
 
-        return x[0].unsqueeze(0), y[0].unsqueeze(0)
+        pad_batch_x, mask_x = self.padding(x)
+
+        return pad_batch_x, torch.stack(y, dim=0), mask_x
+
+    def padding(self, batch):
+
+        max_bag_len = max([len(xi) for xi in batch]) # (batch_size, bag_size, feat_dim)
+        feat_dim = batch[0].size(-1)
+        print(feat_dim, max_bag_len)
+
+        batch_x_tensor = torch.zeros((len(batch), max_bag_len, feat_dim))
+        mask_x = torch.zeros((len(batch), max_bag_len))
+
+        for i in range(len(batch)):
+            bag_size = batch[i].size(0)
+            batch_x_tensor[i, :bag_size] = batch[i]
+            mask_x[i][:bag_size] = 1.0
+
+        return batch_x_tensor, mask_x
 
 def load_ucsb():
     

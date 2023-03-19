@@ -5,12 +5,14 @@
 
 ## ToDos
 
-- [ ] See how to put dataset into a torch DataLoader due to uneven bag sizes
+- [ ] Do we need dropout on attn weight when using sparsemax?
+- [ ] Check bag size balance in cmv dataset
+- [x] See how to put dataset into a torch DataLoader due to uneven bag sizes
 - [ ] Check split size
-- [ ] Elephant dataset
-- [ ] Fox dataset
-- [ ] tiger dataset
-- [ ] ucsb breast cancer dataset
+- [x] Elephant dataset
+- [x] Fox dataset
+- [x] tiger dataset
+- [x] ucsb breast cancer dataset
 - [ ] Test simulated dataset
 - [ ] CMV with implant
 - [ ] MNIST bags

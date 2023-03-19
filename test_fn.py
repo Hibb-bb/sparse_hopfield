@@ -17,10 +17,6 @@ trainset = dataset.return_training_set()
 
 tdl = DataLoader(trainset, batch_size=4, collate_fn=trainset.collate)
 
-
-print(trainset[0])
-raise Exception
-
 trainset, testset = loader.load_ucsb()
 
 tld = DataLoader(trainset, batch_size=2, collate_fn=trainset.collate)

@@ -23,7 +23,6 @@ batch_size = 4
 task_definition, train_loader, train_loader_fixed, val_loader, test_loader = cmv_dataset(dataset_path='./datasets/cmv/', batch_size=batch_size)
 
 # For the CMV + Implant Signal  dataset
-
 task_definition, train_loader, train_loader_fixed, val_loader, test_loader = cmv_implanted_dataset(dataset_path='./datasets/cmv_implanted/', batch_size=batch_size)
 
 # For the Simulated dataset
@@ -33,6 +32,9 @@ task_definition, train_loader, train_loader_fixed, val_loader, test_loader = sim
 # For the lstm generated dataset
 
 task_definition, train_loader, train_loader_fixed, val_loader, test_loader = lstm_generated_dataset(dataset_path='./datasets/lstm/', batch_size=batch_size)
+
+for x, y in train_loader:
+    pass
 
 ```
 
@@ -61,12 +63,14 @@ parser.add_argument('--dataset', default='fox', type=str, choices=['fox', 'eleph
 parser.add_argument('--rs', help='random state', default=1111, type=int)
 parser.add_argument('--multiply', help='multiply features to get more columns', default=False, type=bool)
 
-
 args = parser.parse_args()
 
 dataset = loader.get_dataset(args, args.dataset)
 trainset = dataset.return_training_set()
 trainloader = DataLoader(trainset, batch_size=4, collate_fn=trainset.collate)
+
+for x, y, mask in trainloader:
+    pass
 
 # This is a numpy array dataset
 
@@ -85,7 +89,11 @@ trainset, testset = loader.load_ucsb()
 
 train_loader = DataLoader(trainset, batch_size=2, collate_fn=trainset.collate)
 
-# train_x : (bag_num, bag_size, feature_dim)
+for x, y, mask in train_loader:
+    pass
+
+# x : (batch_size, max_bag_size, feature_dim)
+# mask : (batch_size, max_bag_size)
 
 # This is a numpy array dataset
 ```

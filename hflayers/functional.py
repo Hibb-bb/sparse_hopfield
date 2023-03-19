@@ -44,8 +44,7 @@ def hopfield_core_forward(query,                           # type: Tensor
                           update_steps_eps=1e-4,           # type: Union[float, Tensor]
                           return_raw_associations=False,   # type: bool
                           return_projected_patterns=False, # type: bool
-
-                          sparse='none'                    # type: str (['none', 'sparsemax', 'entmax'])
+                          mask = None                    
                           ):
     # type: (...) -> Tuple[Tensor, Optional[Tensor]]
     r"""
@@ -409,14 +408,19 @@ def hopfield_core_forward(query,                           # type: Tensor
                 attn_output_weights += attn_mask
 
         if key_padding_mask is not None:
+            print('pre mask', attn_output_weights[0])
             attn_output_weights = attn_output_weights.view(bsz, num_heads, tgt_len, src_len)
             attn_output_weights = attn_output_weights.masked_fill(
                 key_padding_mask.unsqueeze(1).unsqueeze(2),
                 float('-inf'),
             )
+            print('post mask', attn_output_weights[0])
+            raise Exception
             attn_output_weights = attn_output_weights.view(bsz * num_heads, tgt_len, src_len)
 
         # Compute new xi for Hopfield retrieve iterations.
+        # if mask is not None:
+        #     attn_output_weights = attn_output_weights.masked_fill(mask == 0, -float('inf'))
         if xi is None:
             xi = nn.functional.softmax(attn_output_weights, dim=-1)
                 
@@ -439,6 +443,8 @@ def hopfield_core_forward(query,                           # type: Tensor
     ####################################################################################################################
 
     attn_output_weights = nn.functional.dropout(xi, p=dropout_p, training=training)
+
+
     attn_output = torch.bmm(attn_output_weights, v)
     assert list(attn_output.shape[:2]) == [bsz * num_heads, tgt_len]
     attn_output = attn_output.transpose(0, 1).contiguous().view(tgt_len, bsz, -1)

@@ -69,14 +69,14 @@ class HopfieldMIL(nn.Module):
             nn.Linear(self.L * self.K, 1)
         )
 
-    def forward(self, x):
+    def forward(self, x, attn_mask=None):
 
         x = x.unsqueeze(0)
         H = x.float()
         for l in self.emb:
             H = l(H)
 
-        H = self.hopfield_pooling(H)
+        H = self.hopfield_pooling(H, attn_mask=mask)
         H = H.squeeze(0)
         H = self.dp(H)
 
@@ -132,13 +132,12 @@ def train_epoch(network: Module,
     losses, errors, accuracies = [], [], []
     p_bar = tqdm(data_loader, total=len(data_loader))
 
-    for data, target in p_bar:
+    for data, target, mask in p_bar:
 
-        data, target = data[0], target[0]
-        data, target = data.to(device=device), target.to(device=device).unsqueeze(0).float()
+        data, target, mask = data.to(device=device), target.to(device=device).float(), mask.to(device)
 
         # Process data by Hopfield-based network.
-        out = network(data)
+        out = network(data, attn_mask=mask)
         
         optimizer.zero_grad()
         loss = F.binary_cross_entropy_with_logits(input=out, target=target, reduction=r'mean')
@@ -175,15 +174,12 @@ def eval_iter(network: Module,
 
     with torch.no_grad():
         losses, errors, accuracies, probs, labels = [], [], [], [], []
-        for data, target in p_bar:
+        for data, target, mask in p_bar:
             
-            data = data[0]
-            target = target[0]
-
-            data, target = data.to(device=device), target.to(device=device).unsqueeze(0).float()
+            data, target = data.to(device=device), target.to(device=device).float(), mask.to(device)
 
             # Process data by Hopfield-based network.
-            out = network(data)
+            out = network(data, attn_mask=mask)
             loss = F.binary_cross_entropy_with_logits(input=out, target=target, reduction=r'mean')
 
             # Compute performance measures of current model.
@@ -244,13 +240,12 @@ if __name__ == '__main__':
 
     trainset, testset = load_ucsb()
 
-    x ,y = trainset[0]
     # dataset = get_dataset(args, 'fox')
     # trainset = dataset.return_training_set()
     # testset = dataset.return_testing_set()
 
-    train_loader = DataLoader(trainset, batch_size=1, shuffle=True, collate_fn=trainset.collate)
-    test_loader = DataLoader(testset, batch_size=1, collate_fn=testset.collate)
+    train_loader = DataLoader(trainset, batch_size=20, shuffle=True, collate_fn=trainset.collate)
+    test_loader = DataLoader(testset, batch_size=20, collate_fn=testset.collate)
 
     model = HopfieldMIL(args, mode=args.mode)
     model = model.cuda()
