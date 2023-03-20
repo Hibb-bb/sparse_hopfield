@@ -23,11 +23,11 @@ def get_args():
 
     # model parameters
     parser.add_argument('--feat-dim', default=708, type=int)
-    parser.add_argument('--emb-layer', default=2, type=int)
+    parser.add_argument('--emb-layer', default=1, type=int)
     parser.add_argument('--hid-dim', default=128, type=int)
     parser.add_argument('--mode', default='standard', choices=['standard', 'sparse', 'entmax'])
     parser.add_argument('--num-heads', default=8)
-    parser.add_argument('--beta', default=1.0, type=float, choices=[0.1, 1.0, 10.0])
+    parser.add_argument('--beta', default=10.0, type=float, choices=[0.1, 1.0, 10.0])
 
     # training parameters
     parser.add_argument('--lr', default=0.001, type=float)
@@ -38,10 +38,10 @@ def get_args():
     return args
 
 class HopfieldMIL(nn.Module):
-    def __init__(self, args, emb_dims = [400, 200],  mode = 'standard'):
+    def __init__(self, args, emb_dims = [256],  mode = 'standard'):
         super().__init__()
 
-        self.L = 500
+        self.L = 128
         self.D = 128
         self.K = 1
 
@@ -63,20 +63,18 @@ class HopfieldMIL(nn.Module):
             )
 
         self.dp = nn.Dropout(
-            p=0.75
+            p=0.1
         )
         self.classifier = nn.Sequential(
             nn.Linear(self.L * self.K, 1)
         )
 
-    def forward(self, x, attn_mask=None):
+    def forward(self, x, mask=None):
 
-        x = x.unsqueeze(0)
         H = x.float()
         for l in self.emb:
             H = l(H)
-
-        H = self.hopfield_pooling(H, attn_mask=mask)
+        H = self.hopfield_pooling(H, stored_pattern_padding_mask=mask)
         H = H.squeeze(0)
         H = self.dp(H)
 
@@ -133,11 +131,11 @@ def train_epoch(network: Module,
     p_bar = tqdm(data_loader, total=len(data_loader))
 
     for data, target, mask in p_bar:
-
-        data, target, mask = data.to(device=device), target.to(device=device).float(), mask.to(device)
+        
+        data, target, mask = data.to(device=device), target.to(device=device).float().unsqueeze(-1), mask.to(device)
 
         # Process data by Hopfield-based network.
-        out = network(data, attn_mask=mask)
+        out = network(data, mask=mask)
         
         optimizer.zero_grad()
         loss = F.binary_cross_entropy_with_logits(input=out, target=target, reduction=r'mean')
@@ -151,7 +149,7 @@ def train_epoch(network: Module,
         accuracy = (out.sigmoid().round() == target).to(dtype=torch.float32).mean()
         accuracies.append(accuracy.detach().item())
         losses.append(loss.detach().item())
-        if len(losses) % 5 == 0: 
+        if len(losses) % 1 == 0: 
             p_bar.set_description(f'| Train | Epoch {epoch} | Loss {np.mean(losses)} | Acc {np.mean(accuracies)} |')
     
     # Report progress of training procedure.
@@ -176,25 +174,25 @@ def eval_iter(network: Module,
         losses, errors, accuracies, probs, labels = [], [], [], [], []
         for data, target, mask in p_bar:
             
-            data, target = data.to(device=device), target.to(device=device).float(), mask.to(device)
+            data, target, mask = data.to(device=device), target.to(device=device).float().unsqueeze(-1), mask.to(device)
 
-            # Process data by Hopfield-based network.
-            out = network(data, attn_mask=mask)
+            # Process data by Hopfield-based network
+            out = network(data, mask=mask)
             loss = F.binary_cross_entropy_with_logits(input=out, target=target, reduction=r'mean')
 
             # Compute performance measures of current model.
-            probs.append(torch.sigmoid(out).squeeze(0).item())
-            labels.append(target.squeeze(0).item())
+            probs = probs + (torch.sigmoid(out).squeeze(-1).tolist())
+            labels = labels + (target.squeeze(-1).tolist())
 
             accuracy = (out.sigmoid().round() == target).to(dtype=torch.float32).mean()
             accuracies.append(accuracy.detach().item())
             losses.append(loss.detach().item())
 
-            if len(losses) % 10 == 0 and len(losses) != 0: 
-                roc = roc_auc_score(labels, probs)
-                p_bar.set_description(f'| Test | Epoch {epoch} | Acc {np.mean(accuracies)} AUC {roc}|')
+            if len(losses) % 1 == 0 and len(losses) != 0: 
+                p_bar.set_description(f'| Test | Epoch {epoch} | Acc {np.mean(accuracies)}|')
 
-        
+        # roc = roc_auc_score(labels, probs)
+        # print('ROC', roc)
         # Report progress of validation procedure.
         return sum(losses) / len(losses), sum(accuracies) / len(accuracies)
 
@@ -216,6 +214,7 @@ def operate(network: Module,
     """
     losses, errors, accuracies = {r'train': [], r'eval': []}, {r'train': [], r'eval': []}, {r'train': [], r'eval': []}
     sch = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
+    best_test_acc = -1
 
     for epoch in range(num_epochs):
         
@@ -228,8 +227,14 @@ def operate(network: Module,
         performance = eval_iter(network, data_loader_eval, torch.device('cuda'), epoch)
         losses[r'eval'].append(performance[0])
         accuracies[r'eval'].append(performance[1])
+        if best_test_acc <= performance[1]:
+            best_test_acc = performance[1]
+
+        for g in optimizer.param_groups:
+            g['lr'] *= 0.98
 
         sch.step()
+    print('best acc', best_test_acc)
 
     # Report progress of training and validation procedures.
     return pd.DataFrame(losses), pd.DataFrame(accuracies)
@@ -238,14 +243,14 @@ if __name__ == '__main__':
     
     args = get_args()
 
-    trainset, testset = load_ucsb()
+    # trainset, testset = load_ucsb()
 
-    # dataset = get_dataset(args, 'fox')
-    # trainset = dataset.return_training_set()
-    # testset = dataset.return_testing_set()
+    dataset = get_dataset(args, 'fox')
+    trainset = dataset.return_training_set()
+    testset = dataset.return_testing_set()
 
-    train_loader = DataLoader(trainset, batch_size=20, shuffle=True, collate_fn=trainset.collate)
-    test_loader = DataLoader(testset, batch_size=20, collate_fn=testset.collate)
+    train_loader = DataLoader(trainset, batch_size=8, shuffle=True, collate_fn=trainset.collate)
+    test_loader = DataLoader(testset, batch_size=8, collate_fn=testset.collate)
 
     model = HopfieldMIL(args, mode=args.mode)
     model = model.cuda()

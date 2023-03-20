@@ -11,7 +11,7 @@ import torch.utils.data
 from torchvision import datasets, transforms
 
 from .loader_utils import *
-
+import random
 
 class DummyDataset(torch.utils.data.Dataset):
     def __init__(self, x, y) -> None:
@@ -19,6 +19,9 @@ class DummyDataset(torch.utils.data.Dataset):
 
         self.x = x
         self.y = y
+        for i in range(len(self.y)):
+            if self.y[i] == -1:
+                self.y[i] = 0.0
 
     def __len__(self):
         return len(self.x)
@@ -45,16 +48,18 @@ class DummyDataset(torch.utils.data.Dataset):
 
         max_bag_len = max([len(xi) for xi in batch]) # (batch_size, bag_size, feat_dim)
         feat_dim = batch[0].size(-1)
-        print(feat_dim, max_bag_len)
+        # print(feat_dim, max_bag_len)
 
         batch_x_tensor = torch.zeros((len(batch), max_bag_len, feat_dim))
-        mask_x = torch.zeros((len(batch), max_bag_len))
+        # mask_x = torch.zeros((len(batch), max_bag_len), dtype=torch.uint8)
+        mask_x = torch.ones((len(batch), max_bag_len), dtype=torch.uint8)
 
         for i in range(len(batch)):
             bag_size = batch[i].size(0)
             batch_x_tensor[i, :bag_size] = batch[i]
-            mask_x[i][:bag_size] = 1.0
-
+            mask_x[i][:bag_size] = 0.0
+            # mask_x[i][:bag_size] = 1.0
+        mask_x = mask_x.to(torch.bool)
         return batch_x_tensor, mask_x
 
 def load_ucsb():
@@ -71,7 +76,7 @@ def load_ucsb():
         y = df.groupby([1])[0].first().values
 
         # split train and test data
-        X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(bags, y, test_size=0.2, random_state=0)
+        X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(bags, y, test_size=0.2)
         
         trainset, testset = DummyDataset(X_train, y_train), DummyDataset(X_test, y_test)
 
@@ -89,17 +94,17 @@ def get_dataset(args, dataset='fox'):
         filepath = os.getcwd() + '/datasets/mil_datasets/{}_dataset.pkl'.format(args.dataset)
     else:
         filepath = os.getcwd() + '/datasets/mil_datasets/{}_original_dataset.pkl'.format(args.dataset)
-    if (os.path.exists(filepath)):
-        print('Dataset loaded')
-        with open(filepath, 'rb') as dataset_file:
-            dataset =  pickle.load(dataset_file)
-            return dataset
-    else:
-        dataset = Dataset(args, dataset)
-        print('Dataset loaded')
-        file = open(filepath, 'wb')
-        pickle.dump(dataset, file)
-        return dataset
+    # if (os.path.exists(filepath)):
+    #     print('Dataset loaded')
+    #     with open(filepath, 'rb') as dataset_file:
+    #         dataset =  pickle.load(dataset_file)
+    #         return dataset
+    # else:
+    dataset = Dataset(args, dataset)
+    print('Dataset loaded')
+    file = open(filepath, 'wb')
+    pickle.dump(dataset, file)
+    return dataset
 
 class Dataset():
     def __init__(self, args, dataset='fox'):

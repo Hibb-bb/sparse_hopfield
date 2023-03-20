@@ -217,7 +217,7 @@ class Hopfield(Module):
             query=state_pattern, key=stored_pattern, value=pattern_projection,
             key_padding_mask=stored_pattern_padding_mask, need_weights=False, attn_mask=association_mask,
             scaling=self.__scaling, update_steps_max=self.__update_steps_max, update_steps_eps=self.__update_steps_eps,
-            return_raw_associations=return_raw_associations, return_pattern_projections=return_projected_patterns, attn_mask=attn_mask)
+            return_raw_associations=return_raw_associations, return_pattern_projections=return_projected_patterns)
 
     def forward(self, input: Union[Tensor, Tuple[Tensor, Tensor, Tensor]],
                 stored_pattern_padding_mask: Optional[Tensor] = None,

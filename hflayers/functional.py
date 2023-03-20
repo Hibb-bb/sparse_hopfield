@@ -5,6 +5,8 @@ from torch import Tensor
 from typing import Optional, Tuple, Union
 from sparse_max import Sparsemax
 
+import warnings
+
 def hopfield_core_forward(query,                           # type: Tensor
                           key,                             # type: Tensor
                           value,                           # type: Tensor
@@ -408,14 +410,15 @@ def hopfield_core_forward(query,                           # type: Tensor
                 attn_output_weights += attn_mask
 
         if key_padding_mask is not None:
-            print('pre mask', attn_output_weights[0])
+            # print('pre mask', attn_output_weights[0])
+
             attn_output_weights = attn_output_weights.view(bsz, num_heads, tgt_len, src_len)
             attn_output_weights = attn_output_weights.masked_fill(
-                key_padding_mask.unsqueeze(1).unsqueeze(2),
+                key_padding_mask.unsqueeze(1).unsqueeze(2).repeat(1, num_heads, 1, 1),
                 float('-inf'),
             )
-            print('post mask', attn_output_weights[0])
-            raise Exception
+            # print('post mask', attn_output_weights[0])
+            # raise Exception
             attn_output_weights = attn_output_weights.view(bsz * num_heads, tgt_len, src_len)
 
         # Compute new xi for Hopfield retrieve iterations.
