@@ -21,7 +21,7 @@
 
 `cd datasets/mil_datasets/` <br>
 `wget http://www.cs.columbia.edu/~andrews/mil/data/MIL-Data-2002-Musk-Corel-Trec9-MATLAB.tgz` <br>
-`tar zxvf ./MIL-Data-2002-Musk-Corel-Trec9-MATLAB.tg` <br>
+`tar zxvf ./MIL-Data-2002-Musk-Corel-Trec9-MATLAB.tgz` <br>
 
 ## Requirements
 
