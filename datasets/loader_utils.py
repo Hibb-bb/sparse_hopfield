@@ -33,7 +33,7 @@ def multiply_features(list_of_instance):
 def train_test_split(features, bag_labels, instance_labels=None):
     
     # ToDos
-    split = 0.8 
+    split = 0.9
     # Check split size    
 
     num_bags = len(features)
