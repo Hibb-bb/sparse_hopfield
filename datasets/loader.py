@@ -91,9 +91,9 @@ def get_dataset(args, dataset='fox'):
     :return: list(features), list(bag_labels)
     """
     if args.multiply:
-        filepath = '/home/dlyang/sparse_hopfield/datasets/mil_datasets/{}_dataset.pkl'.format(args.dataset)
+        filepath = './datasets/mil_datasets/{}_dataset.pkl'.format(args.dataset)
     else:
-        filepath = '/home/dlyang/sparse_hopfield/datasets/mil_datasets/{}_original_dataset.pkl'.format(args.dataset)
+        filepath = './datasets/mil_datasets/{}_original_dataset.pkl'.format(args.dataset)
     # if (os.path.exists(filepath)):
     #     print('Dataset loaded')
     #     with open(filepath, 'rb') as dataset_file:
@@ -115,7 +115,7 @@ class Dataset():
         self.rs = args.rs # random state
         self.features = []
         self.bag_labels = []
-        dataset = scipy.io.loadmat(f'/home/dlyang/sparse_hopfield/datasets/mil_datasets/{dataset}_100x100_matlab.mat')  # loads fox dataset
+        dataset = scipy.io.loadmat(f'./datasets/mil_datasets/{dataset}_100x100_matlab.mat')  # loads fox dataset
         instance_bag_ids = np.array(dataset['bag_ids'])[0]
         instance_features = np.array(dataset['features'].todense())
         # print(instance_features[0].shape)
