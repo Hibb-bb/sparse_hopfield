@@ -14,14 +14,16 @@ from datasets.loader import get_dataset, load_ucsb
 from sklearn.metrics import roc_auc_score
 
 from ray import tune
-from ray.air import session
+from ray.air import session, RunConfig
 from ray.air.checkpoint import Checkpoint
 from ray.tune.schedulers import ASHAScheduler
 
 def get_args():
 
     parser = argparse.ArgumentParser(description='Examples of MIL benchmarks:')
+    parser.add_argument('--name', type=str)
     parser.add_argument('--dataset', default='fox', type=str, choices=['fox', 'tiger', 'elephant'])
+    parser.add_argument('--mode', default='standard', type=str, choices=['standard', 'sparse'])
     parser.add_argument('--rs', help='random state', default=1111, type=int)
     parser.add_argument('--multiply', help='multiply features to get more columns', default=False, type=bool)
 
@@ -149,7 +151,7 @@ def eval_iter(network: Module,
         # Report progress of validation procedure.
         return sum(losses) / len(losses), sum(accuracies) / len(accuracies), sum(rocs)/len(rocs)
 
-def train(config, args, train_subset, val_subset, trainset):
+def train(config, args, train_subset, val_subset, trainset, testset):
     trainloader = torch.utils.data.DataLoader(
         train_subset,
         batch_size=int(config["batch_size"]),
@@ -164,8 +166,15 @@ def train(config, args, train_subset, val_subset, trainset):
         num_workers=8,
         collate_fn=trainset.collate
     )
+    testloader = torch.utils.data.DataLoader(
+        testset,
+        batch_size=len(testset),
+        shuffle=False,
+        num_workers=8,
+        collate_fn=testset.collate
+    )
 
-    net = HopfieldMIL(config, feat_dim=args.feat_dim, mode='standard')
+    net = HopfieldMIL(config, feat_dim=args.feat_dim, mode=args.mode)
 
     device = "cpu"
     if torch.cuda.is_available():
@@ -176,13 +185,13 @@ def train(config, args, train_subset, val_subset, trainset):
 
     optimizer = torch.optim.AdamW(params=net.parameters(), lr=config['lr'], weight_decay=1e-4)
 
-    # To restore a checkpoint, use `session.get_checkpoint()`.
-    loaded_checkpoint = session.get_checkpoint()
-    if loaded_checkpoint:
-        with loaded_checkpoint.as_directory() as loaded_checkpoint_dir:
-           model_state, optimizer_state = torch.load(os.path.join(loaded_checkpoint_dir, "checkpoint.pt"))
-        net.load_state_dict(model_state)
-        optimizer.load_state_dict(optimizer_state)
+    # # To restore a checkpoint, use `session.get_checkpoint()`.
+    # loaded_checkpoint = session.get_checkpoint()
+    # if loaded_checkpoint:
+    #     with loaded_checkpoint.as_directory() as loaded_checkpoint_dir:
+    #        model_state, optimizer_state = torch.load(os.path.join(loaded_checkpoint_dir, "checkpoint.pt"))
+    #     net.load_state_dict(model_state)
+    #     optimizer.load_state_dict(optimizer_state)
 
     for epoch in range(100):  # loop over the dataset multiple times
         epoch_steps = 0
@@ -193,15 +202,19 @@ def train(config, args, train_subset, val_subset, trainset):
         if epoch % 10==0:
             # Validation loss
             val_loss, val_acc, val_auc = eval_iter(net, valloader, device)
+            test_loss, test_acc, test_auc = eval_iter(net, testloader, device)
 
             # Here we save a checkpoint. It is automatically registered with
             # Ray Tune and can be accessed through `session.get_checkpoint()`
             # API in future iterations.
-            os.makedirs("my_model", exist_ok=True)
-            torch.save(
-                (net.state_dict(), optimizer.state_dict()), "my_model/checkpoint.pt")
-            checkpoint = Checkpoint.from_directory("my_model")
-            session.report({"loss": val_loss, "accuracy": val_acc, "auc": val_auc}, checkpoint=checkpoint)
+            # os.makedirs("my_model", exist_ok=True)
+            # torch.save(
+            #     (net.state_dict(), optimizer.state_dict()), "my_model/checkpoint.pt")
+            # checkpoint = Checkpoint.from_directory("my_model")
+            # session.report({"loss": val_loss, "accuracy": val_acc, "auc": val_auc,
+            #                 "test_loss": test_loss, "test_accuracy": test_acc, "test_auc": test_auc}, checkpoint=checkpoint)
+            session.report({"loss": val_loss, "accuracy": val_acc, "auc": val_auc,
+                            "test_loss": test_loss, "test_accuracy": test_acc, "test_auc": test_auc})
             print("Finished Training")
 
 def test_best_model(best_result, args, testset):
@@ -209,7 +222,7 @@ def test_best_model(best_result, args, testset):
         testset, batch_size=len(testset), shuffle=False, num_workers=2, collate_fn=testset.collate)
 
 
-    best_trained_model = HopfieldMIL(best_result.config, feat_dim=args.feat_dim, mode='standard')
+    best_trained_model = HopfieldMIL(best_result.config, feat_dim=args.feat_dim, mode=args.mode)
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     best_trained_model.to(device)
 
@@ -253,7 +266,7 @@ def main(args, num_samples=10, max_num_epochs=10, gpus_per_trial=2):
     tuner = tune.Tuner(
         tune.with_resources(
             tune.with_parameters(train, args=args, train_subset=train_subset
-                                 , val_subset=val_subset, trainset=trainset),
+                                 , val_subset=val_subset, trainset=trainset, testset=testset),
             resources={"cpu": 4, "gpu": gpus_per_trial}
         ),
         tune_config=tune.TuneConfig(
@@ -263,6 +276,7 @@ def main(args, num_samples=10, max_num_epochs=10, gpus_per_trial=2):
             num_samples=num_samples,
         ),
         param_space=config,
+        run_config=RunConfig(local_dir="./results", name=f"{args.mode}_{args.dataset}_{args.name}")
     )
     results = tuner.fit()
 
@@ -275,13 +289,19 @@ def main(args, num_samples=10, max_num_epochs=10, gpus_per_trial=2):
         best_result.metrics["accuracy"]))
     print("Best trial final validation roc-auc: {}".format(
         best_result.metrics["auc"]))
+    print("Best trial final test loss: {}".format(
+        best_result.metrics["test_loss"]))
+    print("Best trial final test accuracy: {}".format(
+        best_result.metrics["test_accuracy"]))
+    print("Best trial final test roc-auc: {}".format(
+        best_result.metrics["test_auc"]))
 
-    test_best_model(best_result, args=args, testset=testset)
+    # test_best_model(best_result, args=args, testset=testset)
 
 
 
 if __name__ == '__main__':
     args = get_args()
-    main(args, num_samples=1, max_num_epochs=10, gpus_per_trial=1)
+    main(args, num_samples=1, max_num_epochs=10, gpus_per_trial=0)
 
 
