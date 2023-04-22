@@ -56,7 +56,6 @@ class Sparsemax(nn.Module):
 
     def forward(self, input):
         a =  SparsemaxFunction.apply(input, self.dim)
-        print(a)
         return a
 
     def extra_repr(self):
@@ -93,7 +92,7 @@ class SparsemaxFunction(torch.autograd.Function):
 
         # Compute threshold
         zs_sparse = is_gt * zs
-
+        zs_sparse[is_gt==0] = 0
         # Compute taus
         taus = (zs_sparse.sum(-1, keepdim=True) - 1) / k
         taus = taus.expand_as(input)
