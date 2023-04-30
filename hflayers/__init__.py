@@ -490,9 +490,9 @@ class HopfieldPooling(Module):
             stored_pattern, pattern_projection = input
 
         batch_size = stored_pattern.shape[0 if self.batch_first else 1]
-        return stored_pattern, self.pooling_weights.expand(size=(*(
-            (batch_size, self.quantity) if self.batch_first else (self.quantity, batch_size)
-        ), self.pooling_weights.shape[2])), pattern_projection
+        return stored_pattern, self.pooling_weights.repeat((*(
+            (batch_size, 1) if self.batch_first else (1, batch_size)
+        ), 1)), pattern_projection
 
     def forward(self, input: Union[Tensor, Tuple[Tensor, Tensor]], stored_pattern_padding_mask: Optional[Tensor] = None,
                 association_mask: Optional[Tensor] = None, attn_mask = None) -> Tensor:

@@ -12,7 +12,7 @@ import torch
 import torch.nn as nn
 import torch.jit as jit
 from typing import List
-
+from sparse_fn import sparsemax, entmax15
 
 def compute_position_features(max_seq_len, sequence_lengths, dtype=np.float16):
     """Compute position features for sequences of lengths `sequence_lengths`, given the maximum sequence length
@@ -254,7 +254,7 @@ class DeepRC(nn.Module):
                  sequence_embedding_as_16_bit: bool = True,
                  consider_seq_counts: bool = False, add_positional_information: bool = True,
                  sequence_reduction_fraction: float = 0.1, reduction_mb_size: int = 5e4,
-                 device: torch.device = torch.device('cuda:0')):
+                 device: torch.device = torch.device('cuda:0'), sparse: str='softmax'):
         """DeepRC network as described in paper
         
         Apply `.reduce_and_stack_minibatch()` to reduce number of sequences by `sequence_reduction_fraction`
@@ -418,7 +418,14 @@ class DeepRC(nn.Module):
             # Get attention weights for single bag (shape: (n_sequences_per_bag, 1))
             emb_seqs = mb_emb_seqs[start_i:start_i+n_seqs]
             # Calculate attention activations (softmax over n_sequences_per_bag) (shape: (n_sequences_per_bag, 1))
-            attention_weights = torch.softmax(attention_weights, dim=0)
+            
+            if self.sparse == 'softmax':
+                attention_weights = torch.softmax(attention_weights, dim=0)
+            elif self.sparse == 'sparsemax':
+                attention_weights = sparsemax(attention_weights, dim=0)
+            elif self.sparse == 'entmax':
+                attention_weights = entmax15(attention_weights, dim=0)
+
             # Apply attention weights to sequence features (shape: (n_sequences_per_bag, d_v))
             emb_seqs_after_attention = emb_seqs * attention_weights
             # Compute weighted sum over sequence features after attention (format: (d_v,))

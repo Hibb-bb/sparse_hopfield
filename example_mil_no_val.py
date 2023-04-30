@@ -11,8 +11,9 @@ from hflayers import *
 from sparse_hflayers import *
 from datasets.loader import get_dataset, load_ucsb
 
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score,accuracy_score
 
+import ray
 from ray import tune
 from ray.air import session, RunConfig
 from ray.air.checkpoint import Checkpoint
@@ -55,9 +56,12 @@ class HopfieldMIL(nn.Module):
             nn.Linear(config["emb_dims"], 1)
         )
 
+        self.bag_dropout = nn.Dropout(0.5)
+
 
     def forward(self, x, mask=None):
 
+        # x = self.bag_dropout(x)
         H = x.float()
         for l in self.emb:
             H = l(H)
@@ -212,7 +216,6 @@ def test_best_model(best_result, args, testset):
     testloader = torch.utils.data.DataLoader(
         testset, batch_size=len(testset), shuffle=False, num_workers=2, collate_fn=testset.collate)
 
-
     best_trained_model = HopfieldMIL(best_result.config, feat_dim=args.feat_dim, mode=args.mode)
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     best_trained_model.to(device)
@@ -224,12 +227,12 @@ def test_best_model(best_result, args, testset):
 
     test_loss,test_acc, test_auc = eval_iter(best_trained_model, testloader, device)
 
-
     print("Best trial test set loss: {} acc: {} auc: {}".format(test_loss, test_acc, test_auc))
 
 
 def main(args, num_samples=10, max_num_epochs=10, gpus_per_trial=2):
-    dataset = get_dataset(args, 'fox')
+    ray.init(num_gpus=3)
+    dataset = get_dataset(args, args.dataset)
     trainset = dataset.return_training_set()
     testset = dataset.return_testing_set()
     args.feat_dim = trainset.x[0].shape[-1]
@@ -256,7 +259,7 @@ def main(args, num_samples=10, max_num_epochs=10, gpus_per_trial=2):
             resources={"cpu": 4, "gpu": gpus_per_trial}
         ),
         tune_config=tune.TuneConfig(
-            metric="accuracy",
+            metric="auc",
             mode="max",
             scheduler=scheduler,
             num_samples=num_samples,
@@ -266,7 +269,7 @@ def main(args, num_samples=10, max_num_epochs=10, gpus_per_trial=2):
     )
     results = tuner.fit()
 
-    best_result = results.get_best_result("accuracy", "max")
+    best_result = results.get_best_result("auc", "max")
 
     print("Best trial config: {}".format(best_result.config))
     print("Best trial final loss: {}".format(
@@ -276,12 +279,16 @@ def main(args, num_samples=10, max_num_epochs=10, gpus_per_trial=2):
     print("Best trial final roc-auc: {}".format(
         best_result.metrics["auc"]))
 
+    logs = {
+            "loss":best_result.metrics["loss"],
+            "accuracy":best_result.metrics["accuracy"],
+            "auc":best_result.metrics["auc"]
+            }
     # test_best_model(best_result, args=args, testset=testset)
-
 
 
 if __name__ == '__main__':
     args = get_args()
-    main(args, num_samples=1, max_num_epochs=10, gpus_per_trial=0)
+    main(args, num_samples=1, max_num_epochs=10, gpus_per_trial=0.5)
 
 

@@ -168,3 +168,4 @@ cython_debug/
 *datasets/lstm*
 *datasets/cmv*
 *datasets/cmv_implanted*
+results/*

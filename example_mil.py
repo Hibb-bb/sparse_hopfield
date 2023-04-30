@@ -14,6 +14,8 @@ from datasets.loader import get_dataset, load_ucsb
 
 from sklearn.metrics import roc_auc_score
 
+
+
 def get_args():
 
     parser = argparse.ArgumentParser(description='Examples of MIL benchmarks:')
@@ -26,13 +28,14 @@ def get_args():
     parser.add_argument('--emb-layer', default=1, type=int)
     parser.add_argument('--hid-dim', default=128, type=int)
     parser.add_argument('--mode', default='standard', choices=['standard', 'sparse', 'entmax'])
-    parser.add_argument('--num-heads', default=8)
-    parser.add_argument('--beta', default=10.0, type=float, choices=[0.1, 1.0, 10.0])
+    parser.add_argument('--num-heads', default=8, type=int)
+    # parser.add_argument('--beta', default=10.0, type=float, choices=[0.1, 1.0, 10.0])
+    parser.add_argument('--beta', default=10.0, type=float)
 
     # training parameters
     parser.add_argument('--lr', default=0.001, type=float)
     parser.add_argument('--decay', default=1e-4, type=float)
-    parser.add_argument('--epochs', default=160)
+    parser.add_argument('--epochs', default=250)
 
     args = parser.parse_args()
     return args
@@ -50,36 +53,40 @@ class HopfieldMIL(nn.Module):
             emb.append(nn.Linear(emb_dims[i], emb_dims[i+1]))
             emb.append(nn.ReLU())
         self.emb = nn.ModuleList(emb)
+        self.bag_dropout = nn.Dropout2d(p=0.75)
 
         if mode == 'standard':
             self.hopfield_pooling = HopfieldPooling(
-                input_size=emb_dims[-1], hidden_size=args.hid_dim, output_size=self.L, num_heads=args.num_heads, 
-                scaling=args.beta, update_steps_max=3, 
+                input_size=emb_dims[-1], num_heads=args.num_heads, hidden_size = args.hid_dim,
+                scaling=args.beta, update_steps_max=3, dropout=0.0
             )
         elif mode == 'sparse':
             self.hopfield_pooling = SparseHopfieldPooling(
-                input_size=emb_dims[-1], hidden_size=args.hid_dim, output_size=self.L, num_heads=args.num_heads, 
+                input_size=emb_dims[-1], num_heads=args.num_heads,hidden_size = args.hid_dim,
                 scaling=args.beta, update_steps_max=3,
             )
 
-        self.dp = nn.Dropout(
-            p=0.1
-        )
+        # self.dp = nn.Dropout(
+        #     p=0.1
+        # )
         self.classifier = nn.Sequential(
-            nn.Linear(self.L * self.K, 1)
+            nn.ReLU(),
+            nn.Linear(emb_dims[-1], 1)
         )
+
 
     def forward(self, x, mask=None):
 
         H = x.float()
         for l in self.emb:
             H = l(H)
+        # H = self.bag_dropout(H)
         H = self.hopfield_pooling(H, stored_pattern_padding_mask=mask)
-        H = H.squeeze(0)
-        H = self.dp(H)
+        # H = H.squeeze(0)
+        # H = self.dp(H)
 
-        Y_prob = self.classifier(H)
-        Y_hat = torch.ge(Y_prob, 0.5).float()
+        Y_prob = self.classifier(H).flatten()
+        # Y_hat = torch.ge(Y_prob, 0.5).float()
 
         return Y_prob
 
@@ -127,12 +134,12 @@ def train_epoch(network: Module,
     :return: tuple comprising training loss, training error as well as accuracy
     """
     network.train()
-    losses, errors, accuracies = [], [], []
+    losses, errors, accuracies, rocs = [], [], [], []
     p_bar = tqdm(data_loader, total=len(data_loader))
 
     for data, target, mask in p_bar:
         
-        data, target, mask = data.to(device=device), target.to(device=device).float().unsqueeze(-1), mask.to(device)
+        data, target, mask = data.to(device=device), target.to(device=device).float(), mask.to(device)
 
         # Process data by Hopfield-based network.
         out = network(data, mask=mask)
@@ -148,9 +155,11 @@ def train_epoch(network: Module,
         # Compute performance measures of current model.
         accuracy = (out.sigmoid().round() == target).to(dtype=torch.float32).mean()
         accuracies.append(accuracy.detach().item())
+        # roc = roc_auc_score(target.squeeze().detach().cpu(), out.sigmoid().squeeze().detach().cpu())
+        # rocs.append(roc)
         losses.append(loss.detach().item())
         if len(losses) % 1 == 0: 
-            p_bar.set_description(f'| Train | Epoch {epoch} | Loss {np.mean(losses)} | Acc {np.mean(accuracies)} |')
+            p_bar.set_description(f'| Train | Epoch {epoch} | Loss {np.mean(losses)} | Acc {np.mean(accuracies)}')
     
     # Report progress of training procedure.
     return sum(losses) / len(losses), sum(accuracies) / len(accuracies)
@@ -171,10 +180,10 @@ def eval_iter(network: Module,
     p_bar = tqdm(data_loader, total=len(data_loader))
 
     with torch.no_grad():
-        losses, errors, accuracies, probs, labels = [], [], [], [], []
+        losses, errors, accuracies, rocs, probs, labels = [], [], [], [], [], []
         for data, target, mask in p_bar:
             
-            data, target, mask = data.to(device=device), target.to(device=device).float().unsqueeze(-1), mask.to(device)
+            data, target, mask = data.to(device=device), target.to(device=device).float(), mask.to(device)
 
             # Process data by Hopfield-based network
             out = network(data, mask=mask)
@@ -186,10 +195,12 @@ def eval_iter(network: Module,
 
             accuracy = (out.sigmoid().round() == target).to(dtype=torch.float32).mean()
             accuracies.append(accuracy.detach().item())
+            roc = roc_auc_score(target.squeeze().detach().cpu(), out.sigmoid().squeeze().detach().cpu())
+            rocs.append(roc)
             losses.append(loss.detach().item())
 
             if len(losses) % 1 == 0 and len(losses) != 0: 
-                p_bar.set_description(f'| Test | Epoch {epoch} | Acc {np.mean(accuracies)}|')
+                p_bar.set_description(f'| Test | Epoch {epoch} | Acc {np.mean(accuracies)}|Roc {np.mean(rocs)}')
 
         # roc = roc_auc_score(labels, probs)
         # print('ROC', roc)
@@ -219,12 +230,12 @@ def operate(network: Module,
     for epoch in range(num_epochs):
         
         # Train network.
-        performance = train_epoch(network, optimizer, data_loader_train, torch.device('cuda'), epoch)
+        performance = train_epoch(network, optimizer, data_loader_train, torch.device('cuda:1'), epoch)
         losses[r'train'].append(performance[0])
         accuracies[r'train'].append(performance[1])
         
         # Evaluate current model.
-        performance = eval_iter(network, data_loader_eval, torch.device('cuda'), epoch)
+        performance = eval_iter(network, data_loader_eval, torch.device('cuda:1'), epoch)
         losses[r'eval'].append(performance[0])
         accuracies[r'eval'].append(performance[1])
         if best_test_acc <= performance[1]:
@@ -233,7 +244,7 @@ def operate(network: Module,
         for g in optimizer.param_groups:
             g['lr'] *= 0.98
 
-        sch.step()
+        # sch.step()
     print('best acc', best_test_acc)
 
     # Report progress of training and validation procedures.
@@ -249,11 +260,13 @@ if __name__ == '__main__':
     trainset = dataset.return_training_set()
     testset = dataset.return_testing_set()
 
-    train_loader = DataLoader(trainset, batch_size=8, shuffle=True, collate_fn=trainset.collate)
-    test_loader = DataLoader(testset, batch_size=8, collate_fn=testset.collate)
+    args.feat_dim = trainset.x[0].shape[-1]
+
+    train_loader = DataLoader(trainset, batch_size=1, shuffle=True, collate_fn=trainset.collate)
+    test_loader = DataLoader(testset, batch_size=len(testset.x), collate_fn=testset.collate)
 
     model = HopfieldMIL(args, mode=args.mode)
-    model = model.cuda()
+    model = model.to(device='cuda:1')
     optimizer = torch.optim.AdamW(params=model.parameters(), lr=args.lr, weight_decay=args.decay)
 
     operate(model, optimizer, train_loader, test_loader, args.epochs)

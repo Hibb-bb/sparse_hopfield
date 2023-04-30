@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="605e1ce5-fade-4f8c-a586-c3f2a180b315" name="Dennis">
+        <fileTransfer rootFolder="/home/dennis" accessType="SFTP" host="ideas2.research.northwestern.edu" port="22" sshConfigId="b212e451-616e-4d53-a869-f28f95410b2e" sshConfig="dennis@ideas2.research.northwestern.edu:22 password">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>

@@ -1,5 +1,6 @@
 import argparse
 from ray import tune
+import ray
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Print results')
@@ -8,6 +9,8 @@ if __name__ == '__main__':
 
     experiment_path = args.path
     print(f"Loading results from {experiment_path}...")
+
+    ray.init()
 
     restored_tuner = tune.Tuner.restore(experiment_path)
     result_grid = restored_tuner.get_results()
@@ -21,9 +24,9 @@ if __name__ == '__main__':
         best_result.metrics["accuracy"]))
     print("Best trial final validation roc-auc: {}".format(
         best_result.metrics["auc"]))
-    print("Best trial final test loss: {}".format(
-        best_result.metrics["test_loss"]))
-    print("Best trial final test accuracy: {}".format(
-        best_result.metrics["test_accuracy"]))
-    print("Best trial final test roc-auc: {}".format(
-        best_result.metrics["test_auc"]))
+    # print("Best trial final test loss: {}".format(
+    #     best_result.metrics["test_loss"]))
+    # print("Best trial final test accuracy: {}".format(
+    #     best_result.metrics["test_accuracy"]))
+    # print("Best trial final test roc-auc: {}".format(
+    #     best_result.metrics["test_auc"]))

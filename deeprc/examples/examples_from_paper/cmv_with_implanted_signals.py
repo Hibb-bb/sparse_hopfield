@@ -27,6 +27,8 @@ parser.add_argument('--rnd_seed', help='Random seed to use for PyTorch and NumPy
                                        'non-deterministic due to multiprocessing but weight initialization will be the'
                                        ' same). Default: 0.',
                     type=int, default=0)
+
+parser.add_argument('--sparse', type=str, default='softmax', choices=['softmax', 'sparsemax', 'entmax'])
 args = parser.parse_args()
 # Set computation device
 device = torch.device(args.device)
@@ -58,7 +60,7 @@ model = DeepRC(max_seq_len=30, sequence_embedding_network=sequence_embedding_net
                output_network=output_network,
                consider_seq_counts=False, n_input_features=20, add_positional_information=True,
                sequence_reduction_fraction=0.1, reduction_mb_size=int(5e4),
-               device=device).to(device=device)
+               device=device, sparse=args.sparse).to(device=device)
 
 #
 # Train DeepRC model
