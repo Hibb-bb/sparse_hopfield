@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 
 from hflayers import *
 from sparse_hflayers import *
-from datasets.loader import get_dataset, load_ucsb
+from datasets.loader import get_dataset, load_ucsb, DummyDataset
 
 from sklearn.metrics import roc_auc_score
 
@@ -19,7 +19,7 @@ from sklearn.metrics import roc_auc_score
 def get_args():
 
     parser = argparse.ArgumentParser(description='Examples of MIL benchmarks:')
-    parser.add_argument('--dataset', default='fox', type=str, choices=['fox', 'tiger', 'elephant'])
+    parser.add_argument('--dataset', default='fox', type=str, choices=['ucsb', 'fox', 'tiger', 'elephant'])
     parser.add_argument('--rs', help='random state', default=1111, type=int)
     parser.add_argument('--multiply', help='multiply features to get more columns', default=False, type=bool)
 
@@ -230,12 +230,12 @@ def operate(network: Module,
     for epoch in range(num_epochs):
         
         # Train network.
-        performance = train_epoch(network, optimizer, data_loader_train, torch.device('cuda:1'), epoch)
+        performance = train_epoch(network, optimizer, data_loader_train, torch.device('cuda:0'), epoch)
         losses[r'train'].append(performance[0])
         accuracies[r'train'].append(performance[1])
         
         # Evaluate current model.
-        performance = eval_iter(network, data_loader_eval, torch.device('cuda:1'), epoch)
+        performance = eval_iter(network, data_loader_eval, torch.device('cuda:0'), epoch)
         losses[r'eval'].append(performance[0])
         accuracies[r'eval'].append(performance[1])
         if best_test_acc <= performance[1]:
@@ -254,19 +254,21 @@ if __name__ == '__main__':
     
     args = get_args()
 
-    # trainset, testset = load_ucsb()
+    X, Y = load_ucsb()
+    
+    trainset = DummyDataset(X, Y)
+    testset = trainset
+    # dataset = get_dataset(args, 'fox')
+    # trainset = dataset.return_training_set()
+    # testset = dataset.return_testing_set()
 
-    dataset = get_dataset(args, 'fox')
-    trainset = dataset.return_training_set()
-    testset = dataset.return_testing_set()
+    args.feat_dim = X[0].shape[-1]
 
-    args.feat_dim = trainset.x[0].shape[-1]
-
-    train_loader = DataLoader(trainset, batch_size=1, shuffle=True, collate_fn=trainset.collate)
-    test_loader = DataLoader(testset, batch_size=len(testset.x), collate_fn=testset.collate)
+    train_loader = DataLoader(trainset, batch_size=4, shuffle=True, collate_fn=trainset.collate)
+    test_loader = DataLoader(testset, batch_size=4, collate_fn=testset.collate)
 
     model = HopfieldMIL(args, mode=args.mode)
-    model = model.to(device='cuda:1')
+    model = model.to(device='cuda:0')
     optimizer = torch.optim.AdamW(params=model.parameters(), lr=args.lr, weight_decay=args.decay)
 
     operate(model, optimizer, train_loader, test_loader, args.epochs)

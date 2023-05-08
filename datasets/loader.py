@@ -2,7 +2,7 @@ import numpy as np
 import scipy.io
 import os
 import pickle
-
+import pandas as pd
 # import pandas as pd
 import sklearn.model_selection
 from sklearn.model_selection import StratifiedKFold
@@ -95,13 +95,15 @@ def load_ucsb():
         bags_id = df[1].unique()
         bags = [df[df[1]==bag_id][df.columns.values[2:]].values.tolist() for bag_id in bags_id]
         y = df.groupby([1])[0].first().values
+        bags = [np.array(b) for b in bags]
+        return bags, np.array(y)
 
         # split train and test data
-        X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(bags, y, test_size=0.2)
+        # X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(bags, y, test_size=0.2)
         
-        trainset, testset = DummyDataset(X_train, y_train), DummyDataset(X_test, y_test)
+        # trainset, testset = DummyDataset(X_train, y_train), DummyDataset(X_test, y_test)
 
-        return trainset, testset
+        # return trainset, testset
 
     current_file = os.path.abspath(os.path.dirname(__file__))
     return load_data(current_file + '/csv/ucsb_breast_cancer.csv')
@@ -236,7 +238,7 @@ class MnistBags(torch.utils.data.Dataset):
                             index_list.append(index)
                             bag_length_counter += 1
 
-                    index_list = np.array(index_list)
+                    index_list = torch.tensor(index_list)
                     labels_in_bag = labels[index_list]
                     labels_in_bag = labels_in_bag >= self.target_number
                     labels_list.append(labels_in_bag)
@@ -288,7 +290,7 @@ class MnistBags(torch.utils.data.Dataset):
                             index_list.append(index)
                             bag_length_counter += 1
 
-                    index_list = np.array(index_list)
+                    index_list = torch.tensor(index_list)
                     labels_in_bag = labels[index_list]
                     labels_in_bag = labels_in_bag >= self.target_number
                     labels_list.append(labels_in_bag)

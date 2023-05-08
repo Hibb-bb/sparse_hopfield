@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 
 from hflayers import *
 from sparse_hflayers import *
-from datasets.loader import load_data, DummyDataset
+from datasets.loader import load_data, DummyDataset, load_ucsb
 
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import StratifiedKFold
@@ -15,10 +15,12 @@ from ray import tune
 from ray.air import session, RunConfig
 from ray.tune.schedulers import ASHAScheduler
 
+
+
 def get_args():
 
     parser = argparse.ArgumentParser(description='Examples of MIL benchmarks:')
-    parser.add_argument('--dataset', default='fox', type=str, choices=['fox', 'tiger', 'elephant'])
+    parser.add_argument('--dataset', default='fox', type=str, choices=['ucsb', 'fox', 'tiger', 'elephant'])
     parser.add_argument('--mode', default='standard', type=str, choices=['standard', 'sparse'])
     parser.add_argument('--rs', help='random state', default=1111, type=int)
     parser.add_argument('--multiply', help='multiply features to get more columns', default=False, type=bool)
@@ -167,14 +169,14 @@ def train(config, args, train_features, train_labels, testset):
             valset,
             batch_size=len(valset),
             shuffle=False,
-            num_workers=8,
+            num_workers=4,
             collate_fn=valset.collate
         )
         testloader = torch.utils.data.DataLoader(
             testset,
             batch_size=len(testset),
             shuffle=False,
-            num_workers=8,
+            num_workers=4,
             collate_fn=testset.collate
         )
 
@@ -206,7 +208,11 @@ def train(config, args, train_features, train_labels, testset):
 
 
 def main(args, cpus_per_trial, gpus_per_trial, num_samples=1, max_num_epochs=1):
-    features, labels = load_data(args)
+    if args.dataset != 'ucsb':
+        features, labels = load_data(args)
+    else:
+        features, labels = load_ucsb()
+
     args.feat_dim = features[0].shape[-1]
     skf_outer = StratifiedKFold(n_splits=10, random_state=args.rs, shuffle=True)
     losss, accs, aucs = [], [], []
@@ -218,10 +224,10 @@ def main(args, cpus_per_trial, gpus_per_trial, num_samples=1, max_num_epochs=1):
         config = {
             "lr": tune.grid_search([1e-3]),
             "lr_decay": tune.grid_search([0.98,0.94]),
-            "batch_size": tune.grid_search([4,8,16]),
+            "batch_size": tune.grid_search([16]),
             "emb_dims": tune.grid_search([32, 64, 128]),
             "emb_layers": tune.grid_search([1, 2]),
-            "hid_dim": tune.grid_search([16, 32]),
+            "hid_dim": tune.grid_search([64, 128]),
             "num_heads": tune.grid_search([8]),
             "scaling_factor": tune.grid_search([0.1, 1.0, 10.0]),
             "dropout": tune.grid_search([0.0,0.75])
