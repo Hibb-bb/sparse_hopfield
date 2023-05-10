@@ -107,21 +107,25 @@ class HfPooling(nn.Module):
             Sigmoid()
         )
         
-    def forward(self, input: Tensor) -> Tuple[Tensor, Tensor, Optional[Tensor]]:
+    def forward(self, input: Tensor, mask: Tensor) -> Tuple[Tensor, Tensor, Optional[Tensor]]:
         """
         Compute result of Hopfield-based pooling network on specified data.
         
         :param input: data to be processed by the Hopfield-based pooling network
         :return: result as computed by the Hopfield-based pooling network
         """
-        x = input.squeeze(0)
-        H = self.feature_extractor_part1(x)
-        H = H.view(-1, 50 * 4 * 4)
+        # x = input.squeeze(0)
+        if input.dim() == 5:
+            # batched input
+            bag_size = input.size(1)
+            batch_size = input.size(0)
+            c, w, h = input.size(2), input.size(3), input.size(4)
+            x = input.view(bag_size*batch_size, c, w, h)
+            H = self.feature_extractor_part1(x)
+        H = H.view(batch_size, bag_size, 50 * 4 * 4)
         H = self.feature_extractor_part2(H)
         
-        H = H.unsqueeze(0)
-        H = self.hopfield_pooling(H)
-        H = H.squeeze(0)
+        H = self.hopfield_pooling(H, stored_pattern_padding_mask=mask)
         H = self.dp(H)
 
         Y_prob = self.classifier(H)
@@ -129,7 +133,7 @@ class HfPooling(nn.Module):
 
         return Y_prob, Y_hat, None
 
-    def calculate_classification_error(self, input: Tensor, target: Tensor) -> Tuple[Tensor, Tensor]:
+    def calculate_classification_error(self, input: Tensor, mask: Tensor, target: Tensor) -> Tuple[Tensor, Tensor]:
         """
         Compute classification error of current model.
         
@@ -138,12 +142,12 @@ class HfPooling(nn.Module):
         :return: classification error as well as predicted class
         """
         Y = target.float()
-        _, Y_hat, _ = self.forward(input)
+        _, Y_hat, _ = self.forward(input, mask)
         error = 1.0 - Y_hat.eq(Y).cpu().float().mean().item()
 
         return error, Y_hat
 
-    def calculate_objective(self, input: Tensor, target: Tensor) -> Tuple[Tensor, Optional[Tensor]]:
+    def calculate_objective(self, input: Tensor, mask: Tensor, target: Tensor) -> Tuple[Tensor, Optional[Tensor]]:
         """
         Compute objective of the current model.
         
@@ -152,11 +156,11 @@ class HfPooling(nn.Module):
         :return: objective as well as dummy A (see accompanying paper for more information)
         """
         Y = target.float()
-        Y_prob, _, A = self.forward(input)
+        Y_prob, _, A = self.forward(input, mask)
         Y_prob = torch.clamp(Y_prob, min=1e-5, max=(1.0 - 1e-5))
         neg_log_likelihood = -1.0 * (Y * torch.log(Y_prob) + (1.0 - Y) * torch.log(1.0 - Y_prob))
 
-        return neg_log_likelihood, A
+        return neg_log_likelihood.mean(), A
 
 def train_epoch(network: Module,
                 optimiser: AdamW,
@@ -172,11 +176,11 @@ def train_epoch(network: Module,
     """
     network.train()
     losses, errors, accuracies = [], [], []
-    for data, target in tqdm(data_loader):
-        data, target = data.to(device=device), target[0].to(device=device)
+    for data, mask, target in tqdm(data_loader):
+        data, mask, target = data.to(device=device), mask.to(device=device), target.to(device=device)
 
         # Process data by Hopfield-based network.
-        loss = network.calculate_objective(data, target)[0]
+        loss = network.calculate_objective(data, mask, target)[0]
 
         # Update network parameters.
         optimiser.zero_grad()
@@ -185,7 +189,7 @@ def train_epoch(network: Module,
         optimiser.step()
 
         # Compute performance measures of current model.
-        error, prediction = network.calculate_classification_error(data, target)
+        error, prediction = network.calculate_classification_error(data, mask, target)
         accuracy = (prediction == target).to(dtype=torch.float32).mean()
         accuracies.append(accuracy.detach().item())
         errors.append(error)
@@ -207,14 +211,14 @@ def eval_iter(network: Module,
     network.eval()
     with torch.no_grad():
         losses, errors, accuracies = [], [], []
-        for data, target in data_loader:
-            data, target = data.to(device=device), target[0].to(device=device)
+        for data, mask, target in data_loader:
+            data, mask, target = data.to(device=device), mask.to(device=device), target.to(device=device)
 
             # Process data by Hopfield-based network.
-            loss = network.calculate_objective(data, target)[0]
+            loss = network.calculate_objective(data, mask, target)[0]
 
             # Compute performance measures of current model.
-            error, prediction = network.calculate_classification_error(data, target)
+            error, prediction = network.calculate_classification_error(data, mask, target)
             accuracy = (prediction == target).to(dtype=torch.float32).mean()
             accuracies.append(accuracy.detach().item())
             errors.append(error)
@@ -222,8 +226,7 @@ def eval_iter(network: Module,
 
         # Report progress of validation procedure.
         return sum(losses) / len(losses), sum(errors) / len(errors), sum(accuracies) / len(accuracies)
-
-    
+   
 def operate(network: Module,
             optimiser: AdamW,
             data_loader_train: DataLoader,
@@ -260,7 +263,6 @@ def operate(network: Module,
     # Report progress of training and validation procedures.
     return pd.DataFrame(losses), pd.DataFrame(errors), pd.DataFrame(accuracies)
 
-
 def set_seed(seed: int = 42) -> None:
     """
     Set seed for all underlying (pseudo) random number sources.
@@ -277,7 +279,8 @@ def main(args, cpus_per_trial, gpus_per_trial, num_samples=1, max_num_epochs=1):
     
     device = torch.device(r'cuda:0' if torch.cuda.is_available() else r'cpu')
 
-    bag_size = [10, 50, 100, 200, 500]
+    bag_size = [10, 50, 100, 200, 500, 1000, 2000]
+    bag_size = [10, 20, 30, 50, 60, 80, 100]
     # bag_size = [50]
 
     losss, accs, aucs = [], [], []
@@ -286,8 +289,8 @@ def main(args, cpus_per_trial, gpus_per_trial, num_samples=1, max_num_epochs=1):
         trainset = MnistBags(target_number=9, mean_bag_length=_bag_size, var_bag_length=1, num_bag=1000, seed=args.rs, train=True)
         testset = MnistBags(target_number=9, mean_bag_length=_bag_size, var_bag_length=1, num_bag=1000, seed=args.rs, train=False)
 
-        data_loader_train = DataLoader(trainset, batch_size=1, shuffle=True)
-        data_loader_eval = DataLoader(testset, batch_size=1, shuffle=True)
+        data_loader_train = DataLoader(trainset, batch_size=4, shuffle=True, collate_fn=trainset.collate)
+        data_loader_eval = DataLoader(testset, batch_size=4, shuffle=True, collate_fn=testset.collate)
         set_seed(args.rs)
         network = HfPooling(args.mode).to(device=device)
         optimiser = AdamW(params=network.parameters(), lr=5e-4, weight_decay=1e-4)
@@ -295,21 +298,22 @@ def main(args, cpus_per_trial, gpus_per_trial, num_samples=1, max_num_epochs=1):
         loss, error, acc = operate(network, optimiser, data_loader_train, data_loader_eval, 20, note=f'bag size {_bag_size}')
         
         loss.to_csv(f'exps/loss_bag{_bag_size}-{args.mode}.csv', index=False)
-        acc.to_csv(f'exps/loss_bag{_bag_size}-{args.mode}.csv', index=False)
+        acc.to_csv(f'exps/acc_bag{_bag_size}-{args.mode}.csv', index=False)
 
         losss.append(loss)
         accs.append(acc)
 
     # loss_plot 
     fig, ax = plt.subplots(1, 2, figsize=(20, 7))
+    # colors = ['red', 'blue', 'green', 'orange', 'brown', 'purple', 'lime']
 
-    for i, l in enumerate(losss):    
-        loss_plot = sns.lineplot(data=l, ax=ax[0])
-        loss_plot.set(xlabel=r'Epoch', ylabel=r'Loss')
+    all_df = pd.concat(losss, axis=0, ignore_index=True)   
+    loss_plot = sns.lineplot(data=all_df, ax=ax[0], hue="coherence")
+    loss_plot.set(xlabel=r'Epoch', ylabel=r'Loss', color=colors[i])
 
-    for i, a in enumerate(accs):    
-        loss_plot = sns.lineplot(data=a, ax=ax[1])
-        loss_plot.set(xlabel=r'Epoch', ylabel=r'Acc')
+    all_df = pd.concat(accs, axis=0, ignore_index=True)   
+    loss_plot = sns.lineplot(data=all_df, ax=ax[1], hue="coherence")
+    loss_plot.set(xlabel=r'Epoch', ylabel=r'Acc', color=colors[i])
 
     fig.tight_layout()
     fig.savefig(f'./mnist_performance_{args.mode}.png')

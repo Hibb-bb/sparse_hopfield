@@ -192,10 +192,47 @@ class MnistBags(torch.utils.data.Dataset):
 
         if self.train:
             self.train_bags_list, self.train_labels_list = self._form_bags()
+            # print(self.train_bags_list[2].shape, self.train_bags_list[3].shape)
+            # raise Exception
         else:
             self.test_bags_list, self.test_labels_list = self._form_bags()
+        
+        self.sparsity = 0.1 # the percentage of target number samples in a positive bag
+
+    def collate(self, batch):
+
+        x = [x for x,y in batch]
+        y = [y for x,y in batch]
+
+        y1 = [a for a,b in y]
+        batch_y = torch.stack(y1, dim=0)
+
+        pad_batch_x, mask_x = self.padding(x)
+
+        return pad_batch_x, mask_x, batch_y
+
+    def padding(self, batch):
+
+        max_bag_len = max([xi.size(0) for xi in batch]) # (batch_size, bag_size, 1, feat_dim, feat_dim)
+        feat_dim = batch[0].size(-1)
+        # print(feat_dim, max_bag_len)
+
+        batch_x_tensor = torch.zeros((len(batch), max_bag_len, 1, feat_dim, feat_dim))
+        # mask_x = torch.zeros((len(batch), max_bag_len), dtype=torch.uint8)
+        mask_x = torch.ones((len(batch), max_bag_len), dtype=torch.uint8)
+
+        for i in range(len(batch)):
+            bag_size = batch[i].size(0)
+            batch_x_tensor[i, :bag_size] = batch[i]
+            mask_x[i][:bag_size] = 0.0
+            # mask_x[i][:bag_size] = 1.0
+        mask_x = mask_x.to(torch.bool)
+        return batch_x_tensor, mask_x
 
     def _form_bags(self):
+
+        neg_labels = [i for i in range(10) if i != self.target_number]
+
         if self.train:
             train_loader = torch.utils.data.DataLoader(datasets.MNIST('../datasets',
                                                                 train=True,
@@ -217,6 +254,14 @@ class MnistBags(torch.utils.data.Dataset):
 
             while valid_bags_counter < self.num_bag:
                 bag_length = np.int(self.r.normal(self.mean_bag_length, self.var_bag_length, 1))
+                
+                # decide positive of negative
+                
+                # if random.random() > 0.5:
+                #     # positive
+                # else:
+                #     # negative
+
                 if bag_length < 1:
                     bag_length = 1
                 indices = torch.LongTensor(self.r.randint(0, self.num_in_train, bag_length))
@@ -228,6 +273,7 @@ class MnistBags(torch.utils.data.Dataset):
                     bags_list.append(numbers[indices])
                     label_of_last_bag = 1
                     valid_bags_counter += 1
+
                 elif label_of_last_bag == 1:
                     index_list = []
                     bag_length_counter = 0
@@ -315,5 +361,4 @@ class MnistBags(torch.utils.data.Dataset):
         else:
             bag = self.test_bags_list[index]
             label = [max(self.test_labels_list[index]), self.test_labels_list[index]]
-
         return bag, label
