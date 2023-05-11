@@ -82,22 +82,14 @@ class HfPooling(nn.Module):
 
         if mode == 'standard':
 
-            self.hopfield_pooling = HopfieldPooling(
+            self.hopfield_pooling = HopfieldLayer(
                 input_size=self.L, hidden_size=32, output_size=self.L, num_heads=1
             )
 
-            # self.hopfield_pooling = HopfieldPooling(
-            #     input_size=config["emb_dims"], num_heads=config["num_heads"], hidden_size = config["hid_dim"],
-            #     scaling=config["scaling_factor"], dropout=config["dropout"]
-            # )
         elif mode == 'sparse':
-            self.hopfield_pooling = SparseHopfieldPooling(
+            self.hopfield_pooling = SparseHopfieldLayer(
                 input_size=self.L, hidden_size=32, output_size=self.L, num_heads=1
             )
-            # self.hopfield_pooling = SparseHopfieldPooling(
-            #     input_size=config["emb_dims"], num_heads=config["num_heads"], hidden_size = config["hid_dim"],
-            #     scaling=config["scaling_factor"], dropout=config["dropout"]
-            # )
 
         self.dp = Dropout(
             p=0.1
@@ -279,8 +271,8 @@ def main(args, cpus_per_trial, gpus_per_trial, num_samples=1, max_num_epochs=1):
     
     device = torch.device(r'cuda:0' if torch.cuda.is_available() else r'cpu')
 
-    bag_size = [10, 50, 100, 200, 500, 1000, 2000]
-    bag_size = [10, 20, 30, 50, 60, 80, 100]
+    # bag_size = [10, 50, 100, 200, 500, 1000, 2000]
+    bag_size = [5, 10, 20, 30, 50]
     # bag_size = [50]
 
     losss, accs, aucs = [], [], []

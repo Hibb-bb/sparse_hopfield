@@ -5,7 +5,7 @@ import pandas as pd
 import seaborn as sns
 import sys
 import torch
-
+import numpy as np
 # Importing Hopfield-specific modules.
 from hflayers import Hopfield, HopfieldPooling, HopfieldLayer
 from hflayers.auxiliary.data import BitPatternSet
@@ -276,19 +276,43 @@ def run_pooling_exp():
 
 def build_layer(mode, bit_pattern_set, bit_samples_unique):
 
-    set_seed()
     if mode == 'standard':
+        # hopfield_lookup = HopfieldLayer(
+        #     input_size=bit_pattern_set.num_bits,
+        #     quantity=len(bit_samples_unique),
+        #     scaling=0.25,
+        #     dropout=0.1)
+
         hopfield_lookup = HopfieldLayer(
             input_size=bit_pattern_set.num_bits,
-            quantity=len(bit_samples_unique))
+            quantity=len(bit_samples_unique),
+            lookup_weights_as_separated=True,
+            lookup_targets_as_trainable=False,
+            normalize_stored_pattern_affine=True,
+            normalize_pattern_projection_affine=True)
+
+        with torch.no_grad():
+            hopfield_lookup.lookup_weights[:] = bit_samples_unique.unsqueeze(dim=0)
+
         output_projection = Linear(in_features=hopfield_lookup.output_size * bit_pattern_set.num_instances, out_features=1)
         network = Sequential(hopfield_lookup, Flatten(start_dim=1), output_projection, Flatten(start_dim=0)).to(device=device)
         optimiser = AdamW(params=network.parameters(), lr=1e-3)
     
     else:
+        # hopfield_lookup = SparseHopfieldLayer(
+        #     input_size=bit_pattern_set.num_bits,
+        #     quantity=len(bit_samples_unique),
+        #     scaling=0.25,
+        #     dropout=0.1)
         hopfield_lookup = SparseHopfieldLayer(
             input_size=bit_pattern_set.num_bits,
-            quantity=len(bit_samples_unique))
+            quantity=len(bit_samples_unique),
+            lookup_weights_as_separated=True,
+            lookup_targets_as_trainable=False,
+            normalize_stored_pattern_affine=True,
+            normalize_pattern_projection_affine=True)
+        with torch.no_grad():
+            hopfield_lookup.lookup_weights[:] = bit_samples_unique.unsqueeze(dim=0)
         output_projection = Linear(in_features=hopfield_lookup.output_size * bit_pattern_set.num_instances, out_features=1)
         network = Sequential(hopfield_lookup, Flatten(start_dim=1), output_projection, Flatten(start_dim=0)).to(device=device)
         optimiser = AdamW(params=network.parameters(), lr=1e-3)
@@ -296,28 +320,88 @@ def build_layer(mode, bit_pattern_set, bit_samples_unique):
 
 def run_layer_exp():
 
-    num_instance = [16, 32, 64, 128, 256]
+    num_instance = [5, 10, 15, 20, 25, 30, 35, 40]
+    # num_instance = [5, 10]
     max_acc = []
+    exp_data = {}
+    dense_data, sparse_data = [[],[]], [[],[]]
     for n in num_instance:
 
         train_loader, eval_loader, bit_pattern_set = get_data(num_instances=n)
-        bit_samples_unique = [_[r'data'] for _ in data_loader_train]
+        bit_samples_unique = [_[r'data'] for _ in train_loader]
         bit_samples_unique = torch.cat(bit_samples_unique).view(-1, bit_samples_unique[0].shape[2]).unique(dim=0)
 
-        model, opt = build_layer('standard', bit_pattern_set, bit_samples_unique)
-        loss, acc = operate(network=model, optimiser=opt, data_loader_train=train_loader, data_loader_eval=eval_loader, num_epochs=250)
+        sparse_res, res = [], []
+        for i in range(1, 6):
+            set_seed(int(i*1000))
+            model, opt = build_layer('standard', bit_pattern_set, bit_samples_unique)
+            loss, acc = operate(network=model, optimiser=opt, data_loader_train=train_loader, data_loader_eval=eval_loader, num_epochs=250)
 
-        sparse_model, sparse_opt = build_layer('sparse', bit_pattern_set, bit_samples_unique)
-        sparse_loss, sparse_acc = operate(network=sparse_model, optimiser=sparse_opt, data_loader_train=train_loader, data_loader_eval=eval_loader, num_epochs=250)
+            sparse_model, sparse_opt = build_layer('sparse', bit_pattern_set, bit_samples_unique)
+            sparse_loss, sparse_acc = operate(network=sparse_model, optimiser=sparse_opt, data_loader_train=train_loader, data_loader_eval=eval_loader, num_epochs=250)
 
-        plot_performance(loss=loss, accuracy=acc, log_file=f'{log_dir}/hopfield_base_{n}_standard.pdf')
-        plot_performance(loss=sparse_loss, accuracy=sparse_acc, log_file=f'{log_dir}/hopfield_layer_{n}_sparse.pdf')
+            sparse_res.append(max(sparse_acc['eval']))
+            res.append(max(acc['eval']))
 
-        max_acc.append([max(acc['eval']), max(sparse_acc['eval'])])
+        dense_data[0].append(np.mean(res))
+        dense_data[1].append(np.std(res))
+        sparse_data[0].append(np.mean(sparse_res))
+        sparse_data[1].append(np.std(sparse_res))
+
+
+            # plot_performance(loss=loss, accuracy=acc, log_file=f'{log_dir}/hopfield_base_{n}_standard_rs{i}.pdf')
+            # plot_performance(loss=sparse_loss, accuracy=sparse_acc, log_file=f'{log_dir}/hopfield_base_{n}_sparse_rs{i}.pdf')
+        
+    # df_data = {'Accuracy': x_data, 'Num Instance': y_data, 'Type': mode}
+    # df = pd.DataFrame(df_data)
+
+    # plot = sns.lineplot(data=df, x="Num Instance", y="Accuracy", hue="Type")
+
+    # fig = plot.get_figure()
+    # fig.savefig(f"Hopfield_Layer_Num_instance.png") 
+
+    for i in range(len(num_instance)):
+        print('[Layer] Instance=', num_instance[i], 'standard performance', dense_data[0][i], "+-" , dense_data[1][i], 'sparse performance', sparse_data[0][i], "+-" , sparse_data[1][i])
+
+
+
+def run_layer_exp_vary_sparsity():
+
+    num_instance = 100
+    max_acc = []
+    exp_data = {}
+    # dense_data, sparse_data
+    sparsity = [1, 5, 10, 20, 25, 30]
+    all_mean = []
+    all_var = []
+
+    for s in sparsity:
+
+        train_loader, eval_loader, bit_pattern_set = get_data(num_instances=num_instance, num_signals_per_bag=s)
+        bit_samples_unique = [_[r'data'] for _ in train_loader]
+        bit_samples_unique = torch.cat(bit_samples_unique).view(-1, bit_samples_unique[0].shape[2]).unique(dim=0)
+
+        sparse_res, res = [], []
+        for i in range(1, 6):
+            set_seed(int(i*1000))
+            model, opt = build_layer('standard', bit_pattern_set, bit_samples_unique)
+            loss, acc = operate(network=model, optimiser=opt, data_loader_train=train_loader, data_loader_eval=eval_loader, num_epochs=250)
+
+            sparse_model, sparse_opt = build_layer('sparse', bit_pattern_set, bit_samples_unique)
+            sparse_loss, sparse_acc = operate(network=sparse_model, optimiser=sparse_opt, data_loader_train=train_loader, data_loader_eval=eval_loader, num_epochs=250)
+
+            sparse_res.append(max(sparse_acc['eval']))
+            res.append(max(acc['eval']))
+
+        dense_data[0].append(np.mean(res))
+        dense_data[1].append(np.std(res))
+        sparse_data[0].append(np.mean(sparse_res))
+        sparse_data[1].append(np.std(sparse_res))
 
 
     for i in range(len(num_instance)):
-        print('[Layer] Instance=', num_instance[i], 'standard performance', max_acc[i][0], 'sparse performance', max_acc[i][1])
+        print('[Layer] Sparsity=', num_instance[i], '% standard performance', dense_data[0][i], "+-" , dense_data[1][i], 'sparse performance', sparse_data[0][i], "+-" , sparse_data[1][i])
 
 
-run_hopfield_exp()
+run_layer_exp()
+run_layer_exp_vary_sparsity()

@@ -15,8 +15,6 @@ from ray import tune
 from ray.air import session, RunConfig
 from ray.tune.schedulers import ASHAScheduler
 
-
-
 def get_args():
 
     parser = argparse.ArgumentParser(description='Examples of MIL benchmarks:')
@@ -55,7 +53,6 @@ class HopfieldMIL(nn.Module):
             nn.ReLU(),
             nn.Linear(config["emb_dims"], 1)
         )
-
 
     def forward(self, x, mask=None):
 
@@ -204,8 +201,6 @@ def train(config, args, train_features, train_labels, testset):
                     "test_accuracy": sum(cross_test_accs) / len(cross_test_accs),
                     "test_auc": sum(cross_test_aucs) / len(cross_test_aucs)
                     })
-
-
 
 def main(args, cpus_per_trial, gpus_per_trial, num_samples=1, max_num_epochs=1):
     if args.dataset != 'ucsb':
