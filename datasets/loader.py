@@ -176,13 +176,14 @@ class Dataset():
         fullset = DummyDataset(self.features, self.bag_labels)
         return fullset
 
+
+
 class MnistBags(torch.utils.data.Dataset):
-    def __init__(self, target_number=9, mean_bag_length=10, var_bag_length=1, num_bag=1000, seed=7, train=True):
+    def __init__(self, target_number=9, mean_bag_length=10, var_bag_length=2, num_bag=250, seed=1, train=True):
         self.target_number = target_number
         self.mean_bag_length = mean_bag_length
         self.var_bag_length = var_bag_length
         self.num_bag = num_bag
-        self.seed = seed
         self.train = train
 
         self.r = np.random.RandomState(seed)
@@ -191,160 +192,52 @@ class MnistBags(torch.utils.data.Dataset):
         self.num_in_test = 10000
 
         if self.train:
-            self.train_bags_list, self.train_labels_list = self._form_bags()
-            # print(self.train_bags_list[2].shape, self.train_bags_list[3].shape)
-            # raise Exception
+            self.train_bags_list, self.train_labels_list = self._create_bags()
         else:
-            self.test_bags_list, self.test_labels_list = self._form_bags()
-        
-        self.sparsity = 0.1 # the percentage of target number samples in a positive bag
+            self.test_bags_list, self.test_labels_list = self._create_bags()
 
-    def collate(self, batch):
-
-        x = [x for x,y in batch]
-        y = [y for x,y in batch]
-
-        y1 = [a for a,b in y]
-        batch_y = torch.stack(y1, dim=0)
-
-        pad_batch_x, mask_x = self.padding(x)
-
-        return pad_batch_x, mask_x, batch_y
-
-    def padding(self, batch):
-
-        max_bag_len = max([xi.size(0) for xi in batch]) # (batch_size, bag_size, 1, feat_dim, feat_dim)
-        feat_dim = batch[0].size(-1)
-        # print(feat_dim, max_bag_len)
-
-        batch_x_tensor = torch.zeros((len(batch), max_bag_len, 1, feat_dim, feat_dim))
-        # mask_x = torch.zeros((len(batch), max_bag_len), dtype=torch.uint8)
-        mask_x = torch.ones((len(batch), max_bag_len), dtype=torch.uint8)
-
-        for i in range(len(batch)):
-            bag_size = batch[i].size(0)
-            batch_x_tensor[i, :bag_size] = batch[i]
-            mask_x[i][:bag_size] = 0.0
-            # mask_x[i][:bag_size] = 1.0
-        mask_x = mask_x.to(torch.bool)
-        return batch_x_tensor, mask_x
-
-    def _form_bags(self):
-
-        neg_labels = [i for i in range(10) if i != self.target_number]
-
+    def _create_bags(self):
         if self.train:
-            train_loader = torch.utils.data.DataLoader(datasets.MNIST('../datasets',
-                                                                train=True,
-                                                                download=True,
-                                                                transform=transforms.Compose([
-                                                                         transforms.ToTensor(),
-                                                                         transforms.Normalize((0.1307,), (0.3081,))])),
-                                                 batch_size=self.num_in_train,
-                                                 shuffle=False)
-
-            bags_list = []
-            labels_list = []
-            valid_bags_counter = 0
-            label_of_last_bag = 0
-
-            for batch_data in train_loader:
-                numbers = batch_data[0]
-                labels = batch_data[1]
-
-            while valid_bags_counter < self.num_bag:
-                bag_length = np.int(self.r.normal(self.mean_bag_length, self.var_bag_length, 1))
-                
-                # decide positive of negative
-                
-                # if random.random() > 0.5:
-                #     # positive
-                # else:
-                #     # negative
-
-                if bag_length < 1:
-                    bag_length = 1
-                indices = torch.LongTensor(self.r.randint(0, self.num_in_train, bag_length))
-                labels_in_bag = labels[indices]
-
-                if (self.target_number in labels_in_bag) and (label_of_last_bag == 0):
-                    labels_in_bag = labels_in_bag >= self.target_number
-                    labels_list.append(labels_in_bag)
-                    bags_list.append(numbers[indices])
-                    label_of_last_bag = 1
-                    valid_bags_counter += 1
-
-                elif label_of_last_bag == 1:
-                    index_list = []
-                    bag_length_counter = 0
-                    while bag_length_counter < bag_length:
-                        index = torch.LongTensor(self.r.randint(0, self.num_in_train, 1))
-                        label_temp = labels[index]
-                        if label_temp.numpy()[0] != self.target_number:
-                            index_list.append(index)
-                            bag_length_counter += 1
-
-                    index_list = torch.tensor(index_list)
-                    labels_in_bag = labels[index_list]
-                    labels_in_bag = labels_in_bag >= self.target_number
-                    labels_list.append(labels_in_bag)
-                    bags_list.append(numbers[index_list])
-                    label_of_last_bag = 0
-                    valid_bags_counter += 1
-                else:
-                    pass
-
+            loader = torch.utils.data.DataLoader(datasets.MNIST('../datasets',
+                                                          train=True,
+                                                          download=True,
+                                                          transform=transforms.Compose([
+                                                              transforms.ToTensor(),
+                                                              transforms.Normalize((0.1307,), (0.3081,))])),
+                                           batch_size=self.num_in_train,
+                                           shuffle=False)
         else:
-            test_loader = torch.utils.data.DataLoader(datasets.MNIST('../datasets',
-                                                               train=False,
-                                                               download=True,
-                                                               transform=transforms.Compose([
-                                                                    transforms.ToTensor(),
-                                                                    transforms.Normalize((0.1307,), (0.3081,))])),
-                                                batch_size=self.num_in_test,
-                                                shuffle=False)
+            loader = torch.utils.data.DataLoader(datasets.MNIST('../datasets',
+                                                          train=False,
+                                                          download=True,
+                                                          transform=transforms.Compose([
+                                                              transforms.ToTensor(),
+                                                              transforms.Normalize((0.1307,), (0.3081,))])),
+                                           batch_size=self.num_in_test,
+                                           shuffle=False)
 
-            bags_list = []
-            labels_list = []
-            valid_bags_counter = 0
-            label_of_last_bag = 0
+        for (batch_data, batch_labels) in loader:
+            all_imgs = batch_data
+            all_labels = batch_labels
 
-            for batch_data in test_loader:
-                numbers = batch_data[0]
-                labels = batch_data[1]
+        bags_list = []
+        labels_list = []
 
-            while valid_bags_counter < self.num_bag:
-                bag_length = np.int(self.r.normal(self.mean_bag_length, self.var_bag_length, 1))
-                if bag_length < 1:
-                    bag_length = 1
+        for i in range(self.num_bag):
+            bag_length = np.int(self.r.normal(self.mean_bag_length, self.var_bag_length, 1))
+            if bag_length < 1:
+                bag_length = 1
+
+            if self.train:
+                indices = torch.LongTensor(self.r.randint(0, self.num_in_train, bag_length))
+            else:
                 indices = torch.LongTensor(self.r.randint(0, self.num_in_test, bag_length))
-                labels_in_bag = labels[indices]
 
-                if (self.target_number in labels_in_bag) and (label_of_last_bag == 0):
-                    labels_in_bag = labels_in_bag >= self.target_number
-                    labels_list.append(labels_in_bag)
-                    bags_list.append(numbers[indices])
-                    label_of_last_bag = 1
-                    valid_bags_counter += 1
-                elif label_of_last_bag == 1:
-                    index_list = []
-                    bag_length_counter = 0
-                    while bag_length_counter < bag_length:
-                        index = torch.LongTensor(self.r.randint(0, self.num_in_test, 1))
-                        label_temp = labels[index]
-                        if label_temp.numpy()[0] != self.target_number:
-                            index_list.append(index)
-                            bag_length_counter += 1
+            labels_in_bag = all_labels[indices]
+            labels_in_bag = labels_in_bag == self.target_number
 
-                    index_list = torch.tensor(index_list)
-                    labels_in_bag = labels[index_list]
-                    labels_in_bag = labels_in_bag >= self.target_number
-                    labels_list.append(labels_in_bag)
-                    bags_list.append(numbers[index_list])
-                    label_of_last_bag = 0
-                    valid_bags_counter += 1
-                else:
-                    pass
+            bags_list.append(all_imgs[indices])
+            labels_list.append(labels_in_bag)
 
         return bags_list, labels_list
 
@@ -361,4 +254,193 @@ class MnistBags(torch.utils.data.Dataset):
         else:
             bag = self.test_bags_list[index]
             label = [max(self.test_labels_list[index]), self.test_labels_list[index]]
+
         return bag, label
+
+
+# class MnistBags(torch.utils.data.Dataset):
+#     def __init__(self, target_number=9, mean_bag_length=10, var_bag_length=1, num_bag=1000, seed=7, train=True):
+#         self.target_number = target_number
+#         self.mean_bag_length = mean_bag_length
+#         self.var_bag_length = var_bag_length
+#         self.num_bag = num_bag
+#         self.seed = seed
+#         self.train = train
+
+#         self.r = np.random.RandomState(seed)
+
+#         self.num_in_train = 60000
+#         self.num_in_test = 10000
+
+#         if self.train:
+#             self.train_bags_list, self.train_labels_list = self._form_bags()
+#             # print(self.train_bags_list[2].shape, self.train_bags_list[3].shape)
+#             # raise Exception
+#         else:
+#             self.test_bags_list, self.test_labels_list = self._form_bags()
+        
+#         self.sparsity = 0.1 # the percentage of target number samples in a positive bag
+
+#     def collate(self, batch):
+
+#         x = [x for x,y in batch]
+#         y = [y for x,y in batch]
+
+#         y1 = [a for a,b in y]
+#         batch_y = torch.stack(y1, dim=0)
+
+#         pad_batch_x, mask_x = self.padding(x)
+
+#         return pad_batch_x, mask_x, batch_y
+
+#     def padding(self, batch):
+
+#         max_bag_len = max([xi.size(0) for xi in batch]) # (batch_size, bag_size, 1, feat_dim, feat_dim)
+#         feat_dim = batch[0].size(-1)
+#         # print(feat_dim, max_bag_len)
+
+#         batch_x_tensor = torch.zeros((len(batch), max_bag_len, 1, feat_dim, feat_dim))
+#         # mask_x = torch.zeros((len(batch), max_bag_len), dtype=torch.uint8)
+#         mask_x = torch.ones((len(batch), max_bag_len), dtype=torch.uint8)
+
+#         for i in range(len(batch)):
+#             bag_size = batch[i].size(0)
+#             batch_x_tensor[i, :bag_size] = batch[i]
+#             mask_x[i][:bag_size] = 0.0
+#             # mask_x[i][:bag_size] = 1.0
+#         mask_x = mask_x.to(torch.bool)
+#         return batch_x_tensor, mask_x
+
+#     def _form_bags(self):
+
+#         neg_labels = [i for i in range(10) if i != self.target_number]
+
+#         if self.train:
+#             train_loader = torch.utils.data.DataLoader(datasets.MNIST('../datasets',
+#                                                                 train=True,
+#                                                                 download=True,
+#                                                                 transform=transforms.Compose([
+#                                                                          transforms.ToTensor(),
+#                                                                          transforms.Normalize((0.1307,), (0.3081,))])),
+#                                                  batch_size=self.num_in_train,
+#                                                  shuffle=False)
+
+#             bags_list = []
+#             labels_list = []
+#             valid_bags_counter = 0
+#             label_of_last_bag = 0
+
+#             for batch_data in train_loader:
+#                 numbers = batch_data[0]
+#                 labels = batch_data[1]
+
+#             while valid_bags_counter < self.num_bag:
+#                 bag_length = np.int(self.r.normal(self.mean_bag_length, self.var_bag_length, 1))
+                
+#                 # decide positive of negative
+                
+#                 # if random.random() > 0.5:
+#                 #     # positive
+#                 # else:
+#                 #     # negative
+
+#                 if bag_length < 1:
+#                     bag_length = 1
+#                 indices = torch.LongTensor(self.r.randint(0, self.num_in_train, bag_length))
+#                 labels_in_bag = labels[indices]
+
+#                 if (self.target_number in labels_in_bag) and (label_of_last_bag == 0):
+#                     labels_in_bag = labels_in_bag >= self.target_number
+#                     labels_list.append(labels_in_bag)
+#                     bags_list.append(numbers[indices])
+#                     label_of_last_bag = 1
+#                     valid_bags_counter += 1
+
+#                 elif label_of_last_bag == 1:
+#                     index_list = []
+#                     bag_length_counter = 0
+#                     while bag_length_counter < bag_length:
+#                         index = torch.LongTensor(self.r.randint(0, self.num_in_train, 1))
+#                         label_temp = labels[index]
+#                         if label_temp.numpy()[0] != self.target_number:
+#                             index_list.append(index)
+#                             bag_length_counter += 1
+
+#                     index_list = torch.tensor(index_list)
+#                     labels_in_bag = labels[index_list]
+#                     labels_in_bag = labels_in_bag >= self.target_number
+#                     labels_list.append(labels_in_bag)
+#                     bags_list.append(numbers[index_list])
+#                     label_of_last_bag = 0
+#                     valid_bags_counter += 1
+#                 else:
+#                     pass
+
+#         else:
+#             test_loader = torch.utils.data.DataLoader(datasets.MNIST('../datasets',
+#                                                                train=False,
+#                                                                download=True,
+#                                                                transform=transforms.Compose([
+#                                                                     transforms.ToTensor(),
+#                                                                     transforms.Normalize((0.1307,), (0.3081,))])),
+#                                                 batch_size=self.num_in_test,
+#                                                 shuffle=False)
+
+#             bags_list = []
+#             labels_list = []
+#             valid_bags_counter = 0
+#             label_of_last_bag = 0
+
+#             for batch_data in test_loader:
+#                 numbers = batch_data[0]
+#                 labels = batch_data[1]
+
+#             while valid_bags_counter < self.num_bag:
+#                 bag_length = np.int(self.r.normal(self.mean_bag_length, self.var_bag_length, 1))
+#                 if bag_length < 1:
+#                     bag_length = 1
+#                 indices = torch.LongTensor(self.r.randint(0, self.num_in_test, bag_length))
+#                 labels_in_bag = labels[indices]
+
+#                 if (self.target_number in labels_in_bag) and (label_of_last_bag == 0):
+#                     labels_in_bag = labels_in_bag >= self.target_number
+#                     labels_list.append(labels_in_bag)
+#                     bags_list.append(numbers[indices])
+#                     label_of_last_bag = 1
+#                     valid_bags_counter += 1
+#                 elif label_of_last_bag == 1:
+#                     index_list = []
+#                     bag_length_counter = 0
+#                     while bag_length_counter < bag_length:
+#                         index = torch.LongTensor(self.r.randint(0, self.num_in_test, 1))
+#                         label_temp = labels[index]
+#                         if label_temp.numpy()[0] != self.target_number:
+#                             index_list.append(index)
+#                             bag_length_counter += 1
+
+#                     index_list = torch.tensor(index_list)
+#                     labels_in_bag = labels[index_list]
+#                     labels_in_bag = labels_in_bag >= self.target_number
+#                     labels_list.append(labels_in_bag)
+#                     bags_list.append(numbers[index_list])
+#                     label_of_last_bag = 0
+#                     valid_bags_counter += 1
+#                 else:
+#                     pass
+
+#         return bags_list, labels_list
+
+#     def __len__(self):
+#         if self.train:
+#             return len(self.train_labels_list)
+#         else:
+#             return len(self.test_labels_list)
+
+#     def __getitem__(self, index):
+#         if self.train:
+#             bag = self.train_bags_list[index]
+#             label = [max(self.train_labels_list[index]), self.train_labels_list[index]]
+#         else:
+#             bag = self.test_bags_list[index]
+#             label = [max(self.test_labels_list[index]), self.test_labels_list[index]]
+#         return bag, label
