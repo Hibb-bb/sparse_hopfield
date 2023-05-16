@@ -1,3 +1,5 @@
+import nltk
+nltk.download('stopwords')
 import argparse
 from nltk.corpus import stopwords
 from torch.utils.data import DataLoader
@@ -12,6 +14,7 @@ import torch.nn as nn
 import torch
 import torch.nn.functional as F
 from torch.nn import Module
+from prettytable import PrettyTable
 
 from torch.nn.utils import clip_grad_norm_
 from torch.optim import AdamW
@@ -26,10 +29,9 @@ from tqdm import tqdm
 stop_words = set(stopwords.words('english'))
 from d2l import torch as d2l
 
-device = torch.device(r'cuda:0' if torch.cuda.is_available() else r'cpu')
 
 
-def read_snli(data_dir, is_train):
+def read_snli(data_dir, mode='train'):
     """Read the SNLI dataset into premises, hypotheses, and labels."""
     def extract_text(s):
         # Remove information that will not be used by us
@@ -39,10 +41,15 @@ def read_snli(data_dir, is_train):
         s = re.sub('\\s{2,}', ' ', s)
         return s.strip()
     label_set = {'entailment': 0, 'contradiction': 1, 'neutral': 2}
-    file_name = os.path.join(data_dir, 'snli_1.0_train.txt'
-                             if is_train else 'snli_1.0_test.txt')
+    if mode == 'train':
+        file_name = os.path.join(data_dir, 'snli_1.0_train.txt')
+    elif mode == 'test':
+        file_name = os.path.join(data_dir, 'snli_1.0_test.txt')
+    elif mode == 'val':
+        file_name = os.path.join(data_dir, 'snli_1.0_dev.txt')
+
     with open(file_name, 'r') as f:
-        rows = [row.split('\t') for row in tqdm(f.readlines()[1:], desc='extracting file')]
+        rows = [row.split('\t') for row in f.readlines()[1:]]
     premises = [extract_text(row[1]) for row in rows if row[0] in label_set]
     hypotheses = [extract_text(row[2]) for row in rows if row[0] in label_set]
     labels = [label_set[row[0]] for row in rows if row[0] in label_set]
@@ -56,15 +63,15 @@ def read_snli(data_dir, is_train):
 
 def get_snli(rs=1111):
     data_dir = d2l.download_extract('SNLI')
-    train_text, train_label = read_snli(data_dir, is_train=True)
+    train_text, train_label = read_snli(data_dir, 'train')
 
-    test_text, test_label = read_snli(data_dir, is_train=False)
+    test_text, test_label = read_snli(data_dir, 'test')
 
-    # train_text, train_label, test_text, test_label = get_snli()
-    clean_train = [data_preprocessing(t, True) for t in tqdm(train_text, desc='preprocessing train text')]
-    clean_test = [data_preprocessing(t, True) for t in tqdm(test_text, desc='preprocessing test text')]
-    clean_train, clean_val, train_label, val_label = train_test_split(
-            clean_train, train_label, test_size=0.1, random_state=rs)
+    val_text, val_label = read_snli(data_dir, 'val')
+
+    clean_train = [data_preprocessing(t, True) for t in train_text]
+    clean_test = [data_preprocessing(t, True) for t in test_text]
+    clean_val = [data_preprocessing(t, True) for t in val_text]
     vocab = create_vocab(clean_train)
 
     return clean_train, train_label, clean_val, val_label, clean_test, test_label, vocab
@@ -74,9 +81,9 @@ def get_data(config, trainset, valset, testset):
     train_loader = DataLoader(
         trainset, batch_size=config["batch_size"], collate_fn=trainset.collate, shuffle=True)
     val_loader = DataLoader(
-        valset, batch_size=64, collate_fn=valset.collate)
+        valset, batch_size=config["batch_size"], collate_fn=valset.collate)
     test_loader = DataLoader(
-        testset, batch_size=64, collate_fn=testset.collate)
+        testset, batch_size=config["batch_size"], collate_fn=testset.collate)
 
     return train_loader, val_loader, test_loader
 
@@ -97,35 +104,56 @@ class EarlyStopper:
                 return True
         return False
 
+class LSTM(nn.Module):
+    def __init__(self, config, mode, word_vec):
+        super().__init__()
+        
+        self.emb = nn.Embedding.from_pretrained(word_vec, freeze=False)
+        self.lstm = nn.LSTM(input_size=300, hidden_size=300,  batch_first=True)
+        self.fc = nn.LazyLinear(3)
+
+    def forward(self, input, mask=None):
+        x = input
+        emb_x = self.emb(x)
+        out, (h, c) = self.lstm(emb_x)
+        return self.fc(h.squeeze(0))
+
 class TextHopfield(nn.Module):
     def __init__(self, config, mode, word_vec):
         super().__init__()
 
-        self.emb = nn.Embedding.from_pretrained(word_vec, freeze=True)
+        self.emb = nn.Embedding.from_pretrained(word_vec, freeze=False)
+        self.lstm = nn.LSTM(300, 300, batch_first=True)
 
         if mode == 'dense':
+
             self.hopfield = HopfieldPooling(
-                input_size=config["input_dim"], # embedding size 
+                input_size = 300,
                 num_heads=config["num_heads"], 
                 hidden_size = config["hid_dim"], 
-                scaling=config["scaling_factor"], 
-                dropout=config["dropout"]
-                )
-        elif mode == 'sparse':
-            self.hopfield = SparseHopfieldPooling(
-                input_size=config["input_dim"], 
-                num_heads=config["num_heads"], 
-                hidden_size = config["hid_dim"], 
-                scaling=config["scaling_factor"], 
-                dropout=config["dropout"]
+                scaling=1/512, 
+                dropout=config["dropout"],
+                update_steps_max=1
                 )
 
-        self.fc = nn.LazyLinear(3)
+        elif mode == 'sparse':
+            self.hopfield = SparseHopfieldPooling(
+                input_size= 300,
+                num_heads=config["num_heads"], 
+                hidden_size = config["hid_dim"], 
+                scaling=1/512, 
+                dropout=config["dropout"],
+                update_steps_max=1
+                )
+
+        self.fc = nn.Linear(300, 3)
 
     def forward(self, input, mask):
         x = input
-        emb_x = self.emb(x)
+        emb_x, (h, c) = self.lstm(self.emb(x))
+        # print(emb_x.size(), mask.size())
         h = self.hopfield(emb_x, stored_pattern_padding_mask=mask)
+        # print(h.size())
         return self.fc(h)
 
 def train_epoch(network: Module,
@@ -140,7 +168,6 @@ def train_epoch(network: Module,
 
         # Process data by Hopfield-based network.
         model_output = network.forward(input=data, mask=mask)
-
         # Update network parameters.
         optimiser.zero_grad()
         loss = F.cross_entropy(input=model_output, target=target, reduction=r'mean')
@@ -198,33 +225,33 @@ def operate(network: Module,
         performance = train_epoch(network, optimiser, data_loader_train)
         losses[r'train'].append(performance[0])
         accuracies[r'train'].append(performance[1])
-        
         # Evaluate current model.
         performance = eval_iter(network, data_loader_valid)
+
         if performance[1] >= best_val_acc:
             best_val_acc = performance[1]
             p = eval_iter(network, data_loader_eval)
             best_acc = p[1]
-
+        # print(performance)
         losses[r'eval'].append(performance[0])
         accuracies[r'eval'].append(performance[1])
 
-        if early_stopper.early_stop(performance[1]):
+        if early_stopper.early_stop(performance[0]):
             break
 
         for g in optimiser.param_groups:
             g['lr'] *= lr_decay
-
+    # print('best', best_acc)
     return best_acc
 
 def single_run(config, mode, word_vec, trainset, valset, testset, tune=False):
 
     model = TextHopfield(config, mode, word_vec)
-    opt = torch.optim.AdamW(model.parameters(), lr = config["lr"])
+    opt = torch.optim.Adam(model.parameters(), lr = config["lr"], weight_decay=1e-4)
 
     train_loader, val_loader, test_loader = get_data(config, trainset, valset, testset)
 
-    best_acc = operate(model, opt, train_loader, val_loader, test_loader, num_epochs=20, lr_decay=config["lr_decay"])
+    best_acc = operate(model, opt, train_loader, val_loader, test_loader, num_epochs=150, lr_decay=config["lr_decay"])
 
     if tune:
         session.report({"acc", best_acc})
@@ -245,13 +272,13 @@ def tune_config(word_vec, trainset, valset, testset, mode='dense'):
     # }
 
     config = {
-        "lr": tune.grid_search([1e-3]),
-        "lr_decay": tune.grid_search([0.98]),
-        "batch_size": tune.grid_search([64]),
-        "hid_dim": tune.grid_search([64]),
-        "num_heads": tune.grid_search([12]),
-        "scaling_factor": tune.grid_search([0.1]),
-        "dropout": tune.grid_search([0.0]),
+        "lr": tune.grid_search([1e-3, 1e-5]),
+        "lr_decay": tune.grid_search([0.98, 0.94]),
+        "batch_size": tune.grid_search([512]),
+        "hid_dim": tune.grid_search([32, 64]),
+        "num_heads": tune.grid_search([8, 12]),
+        "scaling_factor": tune.grid_search([1/512, 0.1, 10]),
+        "dropout": tune.grid_search([0.0, 0.1]),
         "input_dim": tune.grid_search([300])
     }
 
@@ -264,7 +291,7 @@ def tune_config(word_vec, trainset, valset, testset, mode='dense'):
         tune.with_resources(
             tune.with_parameters(single_run, mode=mode, word_vec=word_vec, trainset=trainset
                                     , valset=valset, testset=testset, tune=True),
-            resources={"cpu": 1, "gpu": 0.5}
+            resources={"cpu": 1, "gpu": 0.25}
         ),
         tune_config=tune.TuneConfig(
             metric="acc",
@@ -295,6 +322,19 @@ def run_exp():
     valset = Textset(clean_val, val_label, vocab, MAX_LEN)
     testset = Textset(clean_test, test_label, vocab, MAX_LEN)
 
+    # config = {
+    #     "lr": 1e-3,
+    #     "lr_decay": 0.98,
+    #     "batch_size": 2048,
+    #     "hid_dim": 64,
+    #     "num_heads": 8,
+    #     "scaling_factor": 0.1,
+    #     "dropout":0.0,
+    #     "input_dim": 300
+    # }
+    # dense_config = config
+    # sparse_config = config
+
     torch.manual_seed(1111)
 
     results = {'dense':[], 'sparse':[], 'attn':[]}
@@ -304,14 +344,18 @@ def run_exp():
 
     results["dense"].append(dense_acc)
     results["sparse"].append(sparse_acc)
-    # results["attn"].append(attn_acc)
+    results["attn"].append(attn_acc)
 
-    for i in range(2, 3):
+    for i in range(2, 6):
 
         rs = int(i*1111)
         torch.manual_seed(rs)
         dense_acc = single_run(config=dense_config, word_vec=word_vec, mode='dense', trainset=trainset, valset=valset, testset=testset, tune=False)
-        sparse_acc = single_run(config=sparse_config, word_vec=word_vec, trainset=trainset, valset=valset, testset=testset, tune=False)
+        print(dense_acc)
+        
+        sparse_acc = single_run(config=sparse_config, word_vec=word_vec, mode='sparse',  trainset=trainset, valset=valset, testset=testset, tune=False)
+        print(sparse_acc)
+
         # attn_acc = single_run(config=attn_config,  trainset=trainset, valset=valset, testset=testset, tune=False)
 
         results["dense"].append(round(dense_acc, 4))
@@ -330,4 +374,5 @@ def run_exp():
 
 
 if __name__ == '__main__':
+    device = torch.device(r'cuda:0' if torch.cuda.is_available() else r'cpu')
     run_exp()

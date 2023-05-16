@@ -11,6 +11,12 @@ from tqdm import tqdm
 
 stop_words = set(stopwords.words('english'))
 
+def get_char_vector():
+
+    chars = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z']
+    assert len(chars) == 26
+    vocab = {}
+
 
 def get_word_vector(vocab, emb='glove'):
 
@@ -21,7 +27,7 @@ def get_word_vector(vocab, emb='glove'):
             full_content = fi.read().strip().split('\n')
 
         data = {}
-        for i in tqdm(range(len(full_content)), total=len(full_content), desc='loading glove vocabs...'):
+        for i in range(len(full_content)):
             i_word = full_content[i].split(' ')[0]
             if i_word not in vocab.keys():
                 continue
@@ -101,7 +107,10 @@ class Textset(Dataset):
         super().__init__()
 
         new_text = []
-        for t in text:
+        for j, t in enumerate(text):
+            if len(t) <= 1:
+                del text[j]
+                del label[j]
             if len(t) > max_len:
                 t = t[:max_len]
                 new_text.append(t)
@@ -117,8 +126,7 @@ class Textset(Dataset):
         y = [y for x, y in batch]
         x_tensor = pad_sequence(x, True)
         y = torch.tensor(y)
-        pad_mask = ~(x_tensor == 0).to(x_tensor.device)
-
+        pad_mask = (x_tensor == 0).to(x_tensor.device)
         return x_tensor, pad_mask, y
 
     def convert2id(self, text):
