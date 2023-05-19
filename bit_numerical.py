@@ -10,7 +10,8 @@ import numpy as np
 from hflayers import Hopfield, HopfieldPooling, HopfieldLayer
 from hflayers.auxiliary.data import BitPatternSet
 from sparse_hflayers import SparseHopfield, SparseHopfieldPooling, SparseHopfieldLayer
-
+from tqdm import tqdm
+import torch.nn as nn
 # Import auxiliary modules.
 from distutils.version import LooseVersion
 from typing import List, Tuple
@@ -37,7 +38,7 @@ os.makedirs(log_dir, exist_ok=True)
 
 device = torch.device(r'cuda:0' if torch.cuda.is_available() else r'cpu')
 
-def get_data(num_bags=2048, num_instances=16, num_signals=8, num_signals_per_bag=1, num_bits=8, batch_size=64):
+def get_data(num_bags=1000, num_instances=16, num_signals=4, num_signals_per_bag=1, num_bits=4, batch_size=64):
     
     bit_pattern_set = BitPatternSet(
         num_bags=num_bags,
@@ -47,16 +48,16 @@ def get_data(num_bags=2048, num_instances=16, num_signals=8, num_signals_per_bag
         num_bits=num_bits)
 
     # Create data loader of training set.
-    sampler_train = SubsetRandomSampler(list(range(512, 2048 - 512)))
+    sampler_train = SubsetRandomSampler(list(range(100, 900)))
     data_loader_train = DataLoader(dataset=bit_pattern_set, batch_size=batch_size, sampler=sampler_train)
 
     # Create data loader of validation set.
-    sampler_eval = SubsetRandomSampler(list(range(256)) + list(range(2048 - 256, 2048)))
-    data_loader_eval = DataLoader(dataset=bit_pattern_set, batch_size=128, sampler=sampler_eval)
+    sampler_eval = SubsetRandomSampler(list(range(100)) + list(range(900, 1000)))
+    data_loader_eval = DataLoader(dataset=bit_pattern_set, batch_size=16, sampler=sampler_eval)
     # (0 to 256, 2048-256 to 2048)
 
-    sampler_val = SubsetRandomSampler(list(range(256, 512)) + list(range(2048 - 512, 2048-256)))
-    data_loader_valid = DataLoader(dataset=bit_pattern_set, batch_size=128, sampler=sampler_val)
+    sampler_val = SubsetRandomSampler(list(range(100)) + list(range(900, 1000)))
+    data_loader_valid = DataLoader(dataset=bit_pattern_set, batch_size=16, sampler=sampler_val)
 
     return data_loader_train, data_loader_eval, data_loader_valid, bit_pattern_set
 
@@ -146,25 +147,22 @@ def operate(network: Module,
     """
     losses, accuracies = {f'train': [], r'eval': []}, {r'train': [], r'eval': []}
     best_val_acc = -1
-    for epoch in range(num_epochs):
+    for epoch in tqdm(range(num_epochs)):
         
         # Train network.
         performance = train_epoch(network, optimiser, data_loader_train)
         losses[r'train'].append(performance[0])
         accuracies[r'train'].append(performance[1])
         
-        # Evaluate current model.
-        performance = eval_iter(network, data_loader_valid)
-        if performance[1] >= best_val_acc:
-            best_val_acc = performance[1]
-            p = eval_iter(network, data_loader_eval)
-            best_acc = p[1]
 
-        losses[r'eval'].append(performance[0])
-        accuracies[r'eval'].append(performance[1])
+        # losses[r'eval'].append(performance[0])
+        # accuracies[r'eval'].append(performance[1])
     
-        for g in optimiser.param_groups:
-            g['lr'] *= lr_decay
+        # for g in optimiser.param_groups:
+        #     g['lr'] *= lr_decay
+
+    performance = eval_iter(network, data_loader_valid)
+    best_acc = performance[1]
 
     return best_acc
     # Report progress of training and validation procedures.
@@ -207,27 +205,30 @@ def plot_performance(loss: pd.DataFrame,
     plt.close()
     # plt.show(fig)
 
-def build_hopfield(mode='standard', bit_pattern_set=None):
-    if mode == 'standard':
+def build_hopfield(mode="standard", bit_pattern_set=None):
+    if mode == "standard":
         hopfield = Hopfield(
-            input_size=bit_pattern_set.num_bits)
-            # update_steps_max=3,
-            # num_heads=8,
-            # hidden_size=8,
-            # scaling=0.25,
-            # dropout=0.5)
+            input_size=bit_pattern_set.num_bits,
+            hidden_size=8,
+            num_heads=8,
+            update_steps_max=8,
+            scaling=0.25,
+            dropout=0.5)
         output_projection = Linear(in_features=hopfield.output_size * bit_pattern_set.num_instances, out_features=1)
         network = Sequential(hopfield, Flatten(), output_projection, Flatten(start_dim=0)).to(device=device)
         optimiser = AdamW(params=network.parameters(), lr=1e-3)
-    elif mode == 'sparse':
+    elif mode == "sparse":
         hopfield = SparseHopfield(
-            input_size=bit_pattern_set.num_bits)
+            input_size=bit_pattern_set.num_bits,
+            hidden_size=8,
+            num_heads=8,
+            update_steps_max=8,
+            scaling=0.25,
+            dropout=0.5)
         output_projection = Linear(in_features=hopfield.output_size * bit_pattern_set.num_instances, out_features=1)
         network = Sequential(hopfield, Flatten(), output_projection, Flatten(start_dim=0)).to(device=device)
         optimiser = AdamW(params=network.parameters(), lr=1e-3)
-    
     return network, optimiser
-
 def run_hopfield_exp():
 
     num_instance = [10, 30, 50, 70, 90, 110, 130, 150]
@@ -256,19 +257,28 @@ def run_hopfield_exp():
     for i in range(len(num_instance)):
         print('Instance=', num_instance[i], 'standard performance', max_acc[i][0], 'sparse performance', max_acc[i][1])
 
-def build_pooling(mode='sparse', bit_pattern_set=None):
+def build_pooling(mode='sparse', bit_pattern_set=None, bit_pattern_unique=None, config=None):
 
     if mode == 'standard':
-
         hopfield_pooling = HopfieldPooling(
-            input_size=bit_pattern_set.num_bits)
+            input_size=bit_pattern_set.num_bits,
+            hidden_size=8,
+            num_heads=8,
+            update_steps_max=3,
+            scaling=0.25,
+            dropout=0.5)
         output_projection = Linear(in_features=hopfield_pooling.output_size, out_features=1)
         network = Sequential(hopfield_pooling, output_projection, Flatten(start_dim=0)).to(device=device)
         optimiser = AdamW(params=network.parameters(), lr=1e-3)
         return network, optimiser
     else:
         hopfield_pooling = SparseHopfieldPooling(
-            input_size=bit_pattern_set.num_bits)
+            input_size=bit_pattern_set.num_bits,
+            hidden_size=8,
+            num_heads=8,
+            update_steps_max=3,
+            scaling=0.25,
+            dropout=0.5)
         output_projection = Linear(in_features=hopfield_pooling.output_size, out_features=1)
         network = Sequential(hopfield_pooling, output_projection, Flatten(start_dim=0)).to(device=device)
         optimiser = AdamW(params=network.parameters(), lr=1e-3)
@@ -304,7 +314,8 @@ def build_layer(mode, bit_pattern_set, bit_samples_unique, config):
             quantity=len(bit_samples_unique),
             scaling=0.1,
             dropout=0.1,
-            update_steps_max=3, normalize_stored_pattern_affine=True,
+            update_steps_max=1, 
+            normalize_stored_pattern_affine=True,
             normalize_pattern_projection_affine=True)
         '''
         hopfield_lookup = HopfieldLayer(
@@ -330,7 +341,7 @@ def build_layer(mode, bit_pattern_set, bit_samples_unique, config):
              quantity=len(bit_samples_unique),
              scaling=0.1,
              dropout=0.1,
-             update_steps_max=3,
+             update_steps_max=1,
              normalize_stored_pattern_affine=True,
              normalize_pattern_projection_affine=True)
         '''
@@ -350,8 +361,6 @@ def build_layer(mode, bit_pattern_set, bit_samples_unique, config):
         optimiser = AdamW(params=network.parameters(), lr=config["lr"])
 
     return network, optimiser
-
-import torch.nn as nn
 
 class Attn(nn.Module):
     def __init__(self, attn, proj):
@@ -374,7 +383,6 @@ def build_attn_layer(bit_pattern_set, bit_samples_unique, config):
     optimiser = AdamW(params=network.parameters(), lr=config["lr"])
 
     return network, optimiser
-
 
 def hpo():
 
@@ -400,7 +408,6 @@ def hpo():
         param_space=config,
         run_config=RunConfig(local_dir="./results", name=f"{args.mode}_{args.dataset}_{args.name}")
     )
-
 
 def run_layer_exp():
 
